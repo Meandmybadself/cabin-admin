@@ -19,16 +19,14 @@
       display:inline-block; padding:.2rem .6rem; border-radius:99px;
       font-size:.75rem; font-weight:700; white-space:nowrap; flex-shrink:0;
     }
-    .open-badge.open   { background:#d4edda; color:#155724; }
-    .open-badge.closed { background:#f8d7da; color:#721c24; }
+    .open-badge.open    { background:#d4edda; color:#155724; }
+    .open-badge.closed  { background:#f8d7da; color:#721c24; }
     .open-badge.unknown { background:var(--tan-dark); color:var(--text-muted); }
     .business-desc { font-size:.9rem; color:var(--text-muted); margin:.5rem 0; }
     .business-meta { display:flex; flex-wrap:wrap; gap:.5rem .75rem; margin-top:.75rem; }
-    .business-meta a, .business-meta span {
-      font-size:.85rem; color:var(--green-mid); text-decoration:none;
-    }
+    .business-meta a { font-size:.85rem; color:var(--green-mid); text-decoration:none; }
     .business-meta a:hover { text-decoration:underline; }
-    .business-meta .sep { color:var(--tan-dark); }
+    .business-meta .sep { color:var(--tan-dark); font-size:.85rem; }
     .hours-grid {
       display:grid; grid-template-columns:auto 1fr;
       gap:.2rem .75rem; font-size:.85rem; margin-top:.75rem;
@@ -37,6 +35,34 @@
     .hours-time { color:var(--text); }
     .hours-time.today { font-weight:700; color:var(--green-dark); }
     .closed-months-note { font-size:.82rem; color:#721c24; margin-top:.5rem; }
+    .delete-biz-btn {
+      margin-top:.75rem; padding:.3rem .7rem; font-size:.8rem;
+    }
+
+    /* Add form modal */
+    .add-modal-card {
+      background:#fff; border-radius:var(--radius);
+      box-shadow:0 8px 32px rgba(0,0,0,.2);
+      width:100%; max-width:520px;
+      max-height:90dvh; overflow-y:auto;
+      padding:1.5rem;
+    }
+    .add-modal-card h2 { margin-bottom:1rem; color:var(--green-dark); }
+    .add-modal-card .form-row { margin-bottom:.6rem; }
+    .add-modal-card label { display:block; font-size:.82rem; font-weight:600; margin-bottom:.25rem; color:var(--text-muted); }
+    .hours-form-grid {
+      display:grid; grid-template-columns: 6rem 1fr 1fr;
+      gap:.3rem .5rem; align-items:center; font-size:.85rem; margin-bottom:.75rem;
+    }
+    .hours-form-grid span { color:var(--text-muted); }
+    .hours-form-grid input[type=time] { padding:.3rem .5rem; font-size:.85rem; }
+    .months-grid { display:flex; flex-wrap:wrap; gap:.35rem; margin-bottom:.75rem; }
+    .month-chip {
+      padding:.25rem .6rem; border-radius:99px; border:1.5px solid var(--tan-dark);
+      font-size:.8rem; cursor:pointer; user-select:none; background:#fff;
+    }
+    .month-chip.selected { background:var(--green-mid); color:#fff; border-color:var(--green-mid); }
+    .modal-actions { display:flex; gap:.5rem; margin-top:1rem; }
   </style>
 </head>
 <body>
@@ -52,9 +78,59 @@
     </div>
   </nav>
   <main>
-    <h1 class="page-title">Businesses</h1>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem">
+      <h1 class="page-title" style="margin-bottom:0">Businesses</h1>
+      <button class="btn btn-primary" id="add-btn">+ Add</button>
+    </div>
     <div id="business-list"><p class="muted">Loading…</p></div>
   </main>
+
+  <!-- Add business modal -->
+  <div id="add-modal" class="modal hidden" role="dialog" aria-modal="true">
+    <div class="add-modal-card">
+      <h2>Add business</h2>
+      <form id="add-business-form">
+        <div class="form-row">
+          <label>Name *</label>
+          <input type="text" id="biz-name" required>
+        </div>
+        <div class="form-row">
+          <label>Category</label>
+          <input type="text" id="biz-category" placeholder="e.g. Food, Hardware, Services">
+        </div>
+        <div class="form-row">
+          <label>Description</label>
+          <textarea id="biz-description" style="min-height:60px"></textarea>
+        </div>
+        <div class="form-row">
+          <label>Address</label>
+          <input type="text" id="biz-address">
+        </div>
+        <div class="form-row">
+          <label>Phone</label>
+          <input type="tel" id="biz-phone">
+        </div>
+        <div class="form-row">
+          <label>Website</label>
+          <input type="url" id="biz-website" placeholder="https://…">
+        </div>
+
+        <label style="display:block;font-size:.82rem;font-weight:600;margin-bottom:.4rem;color:var(--text-muted)">
+          Hours <span style="font-weight:400">(leave blank = closed that day)</span>
+        </label>
+        <div class="hours-form-grid" id="hours-form"></div>
+
+        <label style="display:block;font-size:.82rem;font-weight:600;margin-bottom:.4rem;color:var(--text-muted)">Closed months</label>
+        <div class="months-grid" id="months-form"></div>
+
+        <p id="add-error" class="error hidden"></p>
+        <div class="modal-actions">
+          <button type="submit" class="btn btn-primary">Save</button>
+          <button type="button" class="btn btn-secondary" id="cancel-btn">Cancel</button>
+        </div>
+      </form>
+    </div>
+  </div>
 
   <div id="auth-modal" class="modal hidden" role="dialog" aria-modal="true">
     <div class="modal-card">
@@ -69,90 +145,67 @@
 
   <script src="/assets/app.js" type="module"></script>
   <script type="module">
-    const DAYS = ['sun','mon','tue','wed','thu','fri','sat'];
-    const DAY_LABELS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+    const DAYS        = ['sun','mon','tue','wed','thu','fri','sat'];
+    const DAY_LABELS  = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
     const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 
-    // Current time in US Central (CT)
     function nowCT() {
       const ct = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Chicago' }));
       return {
-        month: ct.getMonth() + 1, // 1-12
-        dow: ct.getDay(),         // 0=Sun
-        h: ct.getHours(),
-        m: ct.getMinutes(),
+        month: ct.getMonth() + 1,
+        dow: ct.getDay(),
         minuteOfDay: ct.getHours() * 60 + ct.getMinutes(),
       };
     }
-
-    function parseTime(t) { // "HH:MM" → minutes from midnight
-      const [h, m] = t.split(':').map(Number);
-      return h * 60 + m;
-    }
-
+    function parseTime(t) { const [h,m] = t.split(':').map(Number); return h*60+m; }
     function fmt12(t) {
-      const [h, m] = t.split(':').map(Number);
-      const ampm = h >= 12 ? 'pm' : 'am';
-      const h12 = h % 12 || 12;
-      return m === 0 ? `${h12}${ampm}` : `${h12}:${String(m).padStart(2,'0')}${ampm}`;
+      const [h,m] = t.split(':').map(Number);
+      const h12 = h%12||12, ampm = h>=12?'pm':'am';
+      return m===0 ? `${h12}${ampm}` : `${h12}:${String(m).padStart(2,'0')}${ampm}`;
     }
-
     function isOpenNow(hours, closedMonths) {
       const now = nowCT();
       if (closedMonths.includes(now.month)) return 'closed';
-      const dayKey = DAYS[now.dow];
-      const slot = hours[dayKey];
+      const slot = hours[DAYS[now.dow]];
       if (!slot) return 'closed';
-      const open = parseTime(slot.open);
-      const close = parseTime(slot.close);
-      return now.minuteOfDay >= open && now.minuteOfDay < close ? 'open' : 'closed';
+      return now.minuteOfDay >= parseTime(slot.open) && now.minuteOfDay < parseTime(slot.close) ? 'open' : 'closed';
     }
-
-    function mapsUrl(address) {
-      return 'https://maps.google.com/?q=' + encodeURIComponent(address);
-    }
-
-    function esc(s) {
-      return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-    }
+    function mapsUrl(a) { return 'https://maps.google.com/?q=' + encodeURIComponent(a); }
+    function esc(s) { return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
     function renderBusiness(b) {
-      const hours = b.hours || {};
-      const closedMonths = b.closed_months || [];
-      const status = (Object.keys(hours).length || closedMonths.length) ? isOpenNow(hours, closedMonths) : 'unknown';
-      const badgeClass = status === 'open' ? 'open' : status === 'closed' ? 'closed' : 'unknown';
+      const hours = b.hours || {}, closedMonths = b.closed_months || [];
+      const hasHoursData = Object.keys(hours).length || closedMonths.length;
+      const status = hasHoursData ? isOpenNow(hours, closedMonths) : 'unknown';
       const badgeText = status === 'open' ? 'Open now' : status === 'closed' ? 'Closed' : '';
       const now = nowCT();
 
-      const hoursRows = DAYS.map((d, i) => {
-        const slot = hours[d];
-        const isToday = i === now.dow;
+      const hoursRows = DAYS.map((d,i) => {
+        const slot = hours[d], isToday = i === now.dow;
         return slot
           ? `<span class="hours-day">${DAY_LABELS[i]}</span><span class="hours-time${isToday?' today':''}">${fmt12(slot.open)} – ${fmt12(slot.close)}</span>`
           : `<span class="hours-day">${DAY_LABELS[i]}</span><span class="hours-time${isToday?' today':''}">Closed</span>`;
       }).join('');
 
-      const closedNote = closedMonths.length
-        ? `<div class="closed-months-note">Closed in: ${closedMonths.map(m => MONTH_NAMES[m-1]).join(', ')}</div>`
-        : '';
-
       const meta = [];
-      if (b.phone) meta.push(`<a href="tel:${esc(b.phone)}">${esc(b.phone)}</a>`);
+      if (b.phone)   meta.push(`<a href="tel:${esc(b.phone)}">${esc(b.phone)}</a>`);
       if (b.address) meta.push(`<a href="${esc(mapsUrl(b.address))}" target="_blank" rel="noopener">Directions</a>`);
       if (b.website) meta.push(`<a href="${esc(b.website)}" target="_blank" rel="noopener">Website</a>`);
 
       return `
-        <div class="business-card">
+        <div class="business-card" data-id="${b.id}">
           <div class="business-header">
             <div>
               <div class="business-name">${esc(b.name)}</div>
               ${b.category ? `<div class="business-category">${esc(b.category)}</div>` : ''}
             </div>
-            ${badgeText ? `<span class="open-badge ${badgeClass}">${badgeText}</span>` : ''}
+            ${badgeText ? `<span class="open-badge ${status}">${badgeText}</span>` : ''}
           </div>
           ${b.description ? `<div class="business-desc">${esc(b.description)}</div>` : ''}
           ${meta.length ? `<div class="business-meta">${meta.join('<span class="sep"> · </span>')}</div>` : ''}
-          ${Object.keys(hours).length ? `<div class="hours-grid">${hoursRows}</div>${closedNote}` : ''}
+          ${Object.keys(hours).length ? `<div class="hours-grid">${hoursRows}</div>` : ''}
+          ${closedMonths.length ? `<div class="closed-months-note">Closed in: ${closedMonths.map(m=>MONTH_NAMES[m-1]).join(', ')}</div>` : ''}
+          <button class="btn btn-danger delete-biz-btn" data-id="${b.id}">Delete</button>
         </div>`;
     }
 
@@ -160,14 +213,102 @@
       const res = await fetch(`${CabinOS.API}/businesses`);
       const businesses = await res.json();
       const container = document.getElementById('business-list');
-      if (!businesses.length) { container.innerHTML = '<p class="muted">No businesses yet.</p>'; return; }
+      if (!businesses.length) { container.innerHTML = '<p class="muted">No businesses yet. Tap + Add to get started.</p>'; return; }
       const byCategory = {};
       for (const b of businesses) (byCategory[b.category] = byCategory[b.category] || []).push(b);
-      container.innerHTML = Object.entries(byCategory).map(([cat, items]) => `
-        ${cat ? `<div class="section-label">${esc(cat)}</div>` : ''}
-        ${items.map(renderBusiness).join('')}`
+      container.innerHTML = Object.entries(byCategory).map(([cat, items]) =>
+        `${cat ? `<div class="section-label">${esc(cat)}</div>` : ''}${items.map(renderBusiness).join('')}`
       ).join('');
+      container.querySelectorAll('.delete-biz-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          if (!CabinOS.getToken()) { CabinOS.showAuthModal(() => {}); return; }
+          if (!confirm('Delete this business?')) return;
+          await CabinOS.apiFetch(`/businesses/${btn.dataset.id}`, { method: 'DELETE' });
+          load();
+        });
+      });
     }
+
+    // ── Hours form ──
+    const hoursForm = document.getElementById('hours-form');
+    hoursForm.innerHTML = `<span></span><span style="font-size:.8rem;color:var(--text-muted)">Opens</span><span style="font-size:.8rem;color:var(--text-muted)">Closes</span>` +
+      DAYS.map((d,i) => `
+        <span style="color:var(--text-muted)">${DAY_LABELS[i]}</span>
+        <input type="time" id="h-open-${d}">
+        <input type="time" id="h-close-${d}">`).join('');
+
+    function readHours() {
+      const hours = {};
+      DAYS.forEach(d => {
+        const open = document.getElementById(`h-open-${d}`).value;
+        const close = document.getElementById(`h-close-${d}`).value;
+        if (open && close) hours[d] = { open, close };
+      });
+      return hours;
+    }
+    function resetHours() { DAYS.forEach(d => { document.getElementById(`h-open-${d}`).value=''; document.getElementById(`h-close-${d}`).value=''; }); }
+
+    // ── Months form ──
+    const monthsForm = document.getElementById('months-form');
+    MONTH_NAMES.forEach((m,i) => {
+      const chip = document.createElement('span');
+      chip.className = 'month-chip';
+      chip.textContent = m.slice(0,3);
+      chip.dataset.month = i+1;
+      chip.addEventListener('click', () => chip.classList.toggle('selected'));
+      monthsForm.appendChild(chip);
+    });
+    function readClosedMonths() { return Array.from(document.querySelectorAll('.month-chip.selected')).map(c=>Number(c.dataset.month)); }
+    function resetMonths() { document.querySelectorAll('.month-chip').forEach(c=>c.classList.remove('selected')); }
+
+    // ── Modal open/close ──
+    function openModal() {
+      if (!CabinOS.getToken()) { CabinOS.showAuthModal(openModal); return; }
+      document.getElementById('add-modal').classList.remove('hidden');
+    }
+    function closeModal() {
+      document.getElementById('add-modal').classList.add('hidden');
+      document.getElementById('add-business-form').reset();
+      resetHours();
+      resetMonths();
+      document.getElementById('add-error').classList.add('hidden');
+    }
+
+    document.getElementById('add-btn').addEventListener('click', openModal);
+    document.getElementById('cancel-btn').addEventListener('click', closeModal);
+    document.getElementById('add-modal').addEventListener('click', e => {
+      if (e.target === document.getElementById('add-modal')) closeModal();
+    });
+
+    // ── Submit ──
+    document.getElementById('add-business-form').addEventListener('submit', async e => {
+      e.preventDefault();
+      const errEl = document.getElementById('add-error');
+      errEl.classList.add('hidden');
+      const res = await CabinOS.apiFetch('/businesses', {
+        method: 'POST',
+        body: JSON.stringify({
+          id: CabinOS.ulid(),
+          name: document.getElementById('biz-name').value.trim(),
+          category: document.getElementById('biz-category').value.trim(),
+          description: document.getElementById('biz-description').value.trim(),
+          address: document.getElementById('biz-address').value.trim(),
+          phone: document.getElementById('biz-phone').value.trim(),
+          website: document.getElementById('biz-website').value.trim(),
+          hours: readHours(),
+          closed_months: readClosedMonths(),
+          sort_order: 0,
+        }),
+      });
+      if (res.ok) {
+        closeModal();
+        load();
+      } else {
+        const body = await res.json().catch(() => ({}));
+        errEl.textContent = body.error || 'Save failed.';
+        errEl.classList.remove('hidden');
+      }
+    });
 
     load();
   </script>
