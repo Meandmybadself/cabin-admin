@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Wiki — Cabin OS</title>
+  <link rel="stylesheet" href="/assets/style.css">
+</head>
+<body>
+  <nav id="nav">
+    <a href="/" class="nav-brand">Cabin OS</a>
+    <div class="nav-links">
+      <a href="/pages/wiki/">Wiki</a>
+      <a href="/pages/shutdown/">Shutdown</a>
+      <a href="/pages/photos/">Photos</a>
+      <a href="/pages/contacts/">Contacts</a>
+      <a href="/pages/settings/">Settings</a>
+    </div>
+  </nav>
+  <main id="main">
+    <h1 class="page-title">Wiki</h1>
+    <div id="doc-list-view">
+      <div class="card" id="doc-list-card">
+        <p class="muted">Loading…</p>
+      </div>
+    </div>
+    <div id="doc-detail-view" class="hidden">
+      <button class="btn btn-secondary mt1" id="back-btn">← Back</button>
+      <div class="card mt1">
+        <h2 id="doc-title" style="margin-bottom:.75rem;color:var(--green-dark)"></h2>
+        <div class="doc-body" id="doc-body"></div>
+      </div>
+    </div>
+  </main>
+  <div id="auth-modal" class="modal hidden" role="dialog" aria-modal="true">
+    <div class="modal-card">
+      <h2>Enter password</h2>
+      <form id="auth-form">
+        <input type="password" id="auth-password" placeholder="Password" autocomplete="current-password" required>
+        <button type="submit" class="btn btn-primary">Unlock</button>
+      </form>
+      <p id="auth-error" class="error hidden">Incorrect password</p>
+    </div>
+  </div>
+  <script src="/assets/app.js" type="module"></script>
+  <script type="module">
+    function esc(s) {
+      return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    async function loadList() {
+      const res = await fetch(`${CabinOS.API}/docs`);
+      const docs = await res.json();
+      const card = document.getElementById('doc-list-card');
+      if (!docs.length) { card.innerHTML = '<p class="muted">No docs yet.</p>'; return; }
+
+      const byCategory = {};
+      for (const d of docs) {
+        if (!byCategory[d.category]) byCategory[d.category] = [];
+        byCategory[d.category].push(d);
+      }
+
+      card.innerHTML = Object.entries(byCategory).map(([cat, items]) => `
+        <div class="section-label">${esc(cat)}</div>
+        <ul class="doc-list">${items.map(d => `
+          <li class="doc-item">
+            <a href="#" data-slug="${esc(d.slug)}">${esc(d.title)}</a>
+          </li>`).join('')}
+        </ul>`).join('');
+
+      card.querySelectorAll('a[data-slug]').forEach(a => {
+        a.addEventListener('click', e => { e.preventDefault(); loadDoc(a.dataset.slug); });
+      });
+    }
+
+    async function loadDoc(slug) {
+      const res = await fetch(`${CabinOS.API}/docs/${slug}`);
+      if (!res.ok) return;
+      const doc = await res.json();
+      document.getElementById('doc-title').textContent = doc.title;
+      document.getElementById('doc-body').innerHTML = CabinOS.renderMarkdown(doc.body);
+      document.getElementById('doc-list-view').classList.add('hidden');
+      document.getElementById('doc-detail-view').classList.remove('hidden');
+      window.scrollTo(0, 0);
+    }
+
+    document.getElementById('back-btn').addEventListener('click', () => {
+      document.getElementById('doc-detail-view').classList.add('hidden');
+      document.getElementById('doc-list-view').classList.remove('hidden');
+    });
+
+    loadList();
+  </script>
+</body>
+</html>

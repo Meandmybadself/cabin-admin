@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Contacts — Cabin OS</title>
+  <link rel="stylesheet" href="/assets/style.css">
+</head>
+<body>
+  <nav id="nav">
+    <a href="/" class="nav-brand">Cabin OS</a>
+    <div class="nav-links">
+      <a href="/pages/wiki/">Wiki</a>
+      <a href="/pages/shutdown/">Shutdown</a>
+      <a href="/pages/photos/">Photos</a>
+      <a href="/pages/contacts/">Contacts</a>
+      <a href="/pages/settings/">Settings</a>
+    </div>
+  </nav>
+  <main>
+    <h1 class="page-title">Contacts</h1>
+    <div class="card">
+      <ul class="contact-list" id="contact-list">
+        <li class="muted">Loading…</li>
+      </ul>
+    </div>
+  </main>
+  <div id="auth-modal" class="modal hidden" role="dialog" aria-modal="true">
+    <div class="modal-card">
+      <h2>Enter password</h2>
+      <form id="auth-form">
+        <input type="password" id="auth-password" placeholder="Password" autocomplete="current-password" required>
+        <button type="submit" class="btn btn-primary">Unlock</button>
+      </form>
+      <p id="auth-error" class="error hidden">Incorrect password</p>
+    </div>
+  </div>
+  <script src="/assets/app.js" type="module"></script>
+  <script type="module">
+    const { apiFetch } = window.CabinOS || await import('/assets/app.js');
+
+    async function load() {
+      const res = await fetch(`${CabinOS.API}/contacts`);
+      const contacts = await res.json();
+      const list = document.getElementById('contact-list');
+      if (!contacts.length) { list.innerHTML = '<li class="muted">No contacts.</li>'; return; }
+      list.innerHTML = contacts.map(c => `
+        <li class="contact-item">
+          <div class="contact-info">
+            <div class="contact-name">${esc(c.name)}</div>
+            <div class="contact-role">${esc(c.role)}</div>
+            ${c.notes ? `<div class="muted" style="font-size:.85rem">${esc(c.notes)}</div>` : ''}
+          </div>
+          ${c.phone ? `<a class="contact-phone" href="tel:${esc(c.phone)}">${esc(c.phone)}</a>` : ''}
+        </li>`).join('');
+    }
+
+    function esc(s) {
+      return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    load();
+  </script>
+</body>
+</html>

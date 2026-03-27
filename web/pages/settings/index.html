@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Settings — Cabin OS</title>
+  <link rel="stylesheet" href="/assets/style.css">
+</head>
+<body>
+  <nav id="nav">
+    <a href="/" class="nav-brand">Cabin OS</a>
+    <div class="nav-links">
+      <a href="/pages/wiki/">Wiki</a>
+      <a href="/pages/shutdown/">Shutdown</a>
+      <a href="/pages/photos/">Photos</a>
+      <a href="/pages/contacts/">Contacts</a>
+      <a href="/pages/settings/">Settings</a>
+    </div>
+  </nav>
+  <main>
+    <h1 class="page-title">Settings</h1>
+
+    <!-- Photo categories -->
+    <div class="section-label">Photo categories</div>
+    <div class="card">
+      <ul id="categories-list" class="contact-list"></ul>
+      <form id="add-category-form" style="display:flex;gap:.5rem;margin-top:1rem">
+        <input type="text" id="new-category-label" placeholder="New category label" required style="flex:1">
+        <button type="submit" class="btn btn-primary">Add</button>
+      </form>
+    </div>
+
+    <!-- Checklist items -->
+    <div class="section-label">Checklist items</div>
+    <div class="card">
+      <ul id="checklist-items-list" class="contact-list"></ul>
+      <form id="add-item-form" style="display:flex;gap:.5rem;margin-top:1rem;flex-wrap:wrap">
+        <input type="text" id="new-item-label" placeholder="Item label" required style="flex:2;min-width:140px">
+        <input type="text" id="new-item-section" placeholder="Section" required style="flex:1;min-width:120px">
+        <button type="submit" class="btn btn-primary">Add</button>
+      </form>
+    </div>
+
+    <!-- Auth -->
+    <div class="section-label">Session</div>
+    <div class="card">
+      <button class="btn btn-secondary" id="logout-btn">Log out</button>
+    </div>
+  </main>
+  <div id="auth-modal" class="modal hidden" role="dialog" aria-modal="true">
+    <div class="modal-card">
+      <h2>Enter password</h2>
+      <form id="auth-form">
+        <input type="password" id="auth-password" placeholder="Password" autocomplete="current-password" required>
+        <button type="submit" class="btn btn-primary">Unlock</button>
+      </form>
+      <p id="auth-error" class="error hidden">Incorrect password</p>
+    </div>
+  </div>
+  <script src="/assets/app.js" type="module"></script>
+  <script type="module">
+    function esc(s) {
+      return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    // ── Photo categories ──
+    async function loadCategories() {
+      const res = await fetch(`${CabinOS.API}/photo-categories`);
+      const cats = await res.json();
+      const list = document.getElementById('categories-list');
+      list.innerHTML = cats.map(c => `
+        <li class="contact-item" data-id="${c.id}">
+          <div class="contact-info"><div class="contact-name">${esc(c.label)}</div></div>
+          <button class="btn btn-danger" data-delete-cat="${c.id}" style="padding:.35rem .65rem;font-size:.8rem">Delete</button>
+        </li>`).join('') || '<li class="muted">No categories.</li>';
+      list.querySelectorAll('[data-delete-cat]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          if (!confirm('Delete this category?')) return;
+          await CabinOS.apiFetch(`/photo-categories/${btn.dataset.deleteCat}`, { method: 'DELETE' });
+          loadCategories();
+        });
+      });
+    }
+
+    document.getElementById('add-category-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (!CabinOS.getToken()) { CabinOS.showAuthModal(() => {}); return; }
+      const label = document.getElementById('new-category-label').value.trim();
+      const res = await CabinOS.apiFetch('/photo-categories', {
+        method: 'POST',
+        body: JSON.stringify({ id: CabinOS.ulid(), label, sort_order: 999 }),
+      });
+      if (res.ok) {
+        document.getElementById('new-category-label').value = '';
+        loadCategories();
+      }
+    });
+
+    // ── Checklist items ──
+    async function loadChecklistItems() {
+      const res = await fetch(`${CabinOS.API}/checklist/items`);
+      const items = await res.json();
+      const list = document.getElementById('checklist-items-list');
+      list.innerHTML = items.map(i => `
+        <li class="contact-item" data-id="${i.id}">
+          <div class="contact-info">
+            <div class="contact-name">${esc(i.label)}</div>
+            <div class="contact-role">${esc(i.section)}</div>
+          </div>
+          <button class="btn btn-danger" data-delete-item="${i.id}" style="padding:.35rem .65rem;font-size:.8rem">Delete</button>
+        </li>`).join('') || '<li class="muted">No items.</li>';
+      list.querySelectorAll('[data-delete-item]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          if (!confirm('Delete this checklist item?')) return;
+          await CabinOS.apiFetch(`/checklist/items/${btn.dataset.deleteItem}`, { method: 'DELETE' });
+          loadChecklistItems();
+        });
+      });
+    }
+
+    document.getElementById('add-item-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (!CabinOS.getToken()) { CabinOS.showAuthModal(() => {}); return; }
+      const label = document.getElementById('new-item-label').value.trim();
+      const section = document.getElementById('new-item-section').value.trim();
+      const res = await CabinOS.apiFetch('/checklist/items', {
+        method: 'POST',
+        body: JSON.stringify({ id: CabinOS.ulid(), label, section, sort_order: 999 }),
+      });
+      if (res.ok) {
+        document.getElementById('new-item-label').value = '';
+        loadChecklistItems();
+      }
+    });
+
+    document.getElementById('logout-btn').addEventListener('click', () => {
+      CabinOS.clearToken();
+      document.getElementById('logout-btn').textContent = 'Logged out';
+    });
+
+    loadCategories();
+    loadChecklistItems();
+  </script>
+</body>
+</html>

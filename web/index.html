@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#2d4a3e">
+  <title>Cabin OS</title>
+  <link rel="stylesheet" href="/assets/style.css">
+</head>
+<body>
+  <nav id="nav">
+    <a href="/" class="nav-brand">Cabin OS</a>
+    <div class="nav-links">
+      <a href="/pages/wiki/" data-page="wiki">Wiki</a>
+      <a href="/pages/shutdown/" data-page="shutdown">Shutdown</a>
+      <a href="/pages/photos/" data-page="photos">Photos</a>
+      <a href="/pages/contacts/" data-page="contacts">Contacts</a>
+      <a href="/pages/settings/" data-page="settings">Settings</a>
+    </div>
+  </nav>
+
+  <main id="app">
+    <div class="home-grid">
+      <a href="/pages/wiki/" class="tile">
+        <span class="tile-icon">📖</span>
+        <span class="tile-label">Wiki</span>
+      </a>
+      <a href="/pages/shutdown/" class="tile">
+        <span class="tile-icon">🔒</span>
+        <span class="tile-label">Shutdown checklist</span>
+      </a>
+      <a href="/pages/photos/" class="tile">
+        <span class="tile-icon">📷</span>
+        <span class="tile-label">Photos</span>
+      </a>
+      <a href="/pages/contacts/" class="tile">
+        <span class="tile-icon">📞</span>
+        <span class="tile-label">Contacts</span>
+      </a>
+      <a href="/pages/settings/" class="tile">
+        <span class="tile-icon">⚙️</span>
+        <span class="tile-label">Settings</span>
+      </a>
+    </div>
+  </main>
+
+  <!-- Password modal -->
+  <div id="auth-modal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Enter password">
+    <div class="modal-card">
+      <h2>Enter password</h2>
+      <form id="auth-form">
+        <input type="password" id="auth-password" placeholder="Password" autocomplete="current-password" required>
+        <button type="submit">Unlock</button>
+      </form>
+      <p id="auth-error" class="error hidden">Incorrect password</p>
+    </div>
+  </div>
+
+  <script src="/assets/app.js" type="module"></script>
+</body>
+</html>

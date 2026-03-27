@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Shutdown — Cabin OS</title>
+  <link rel="stylesheet" href="/assets/style.css">
+</head>
+<body>
+  <nav id="nav">
+    <a href="/" class="nav-brand">Cabin OS</a>
+    <div class="nav-links">
+      <a href="/pages/wiki/">Wiki</a>
+      <a href="/pages/shutdown/">Shutdown</a>
+      <a href="/pages/photos/">Photos</a>
+      <a href="/pages/contacts/">Contacts</a>
+      <a href="/pages/settings/">Settings</a>
+    </div>
+  </nav>
+  <main>
+    <h1 class="page-title">Shutdown checklist</h1>
+
+    <div id="start-view">
+      <div class="card">
+        <p style="margin-bottom:1rem">Run through all steps before leaving the cabin.</p>
+        <button class="btn btn-primary" id="start-btn">Start checklist</button>
+      </div>
+    </div>
+
+    <div id="checklist-view" class="hidden">
+      <div class="progress-bar">
+        <div class="progress-bar-fill" id="progress-fill" style="width:0%"></div>
+      </div>
+      <p class="muted" id="progress-label"></p>
+      <div id="checklist-sections"></div>
+      <div class="checklist-actions mt1">
+        <button class="btn btn-primary" id="complete-btn" disabled>Mark complete</button>
+        <button class="btn btn-secondary" id="abandon-btn">Abandon</button>
+      </div>
+    </div>
+
+    <div id="done-view" class="hidden">
+      <div class="card">
+        <h2 style="color:var(--green-dark);margin-bottom:.5rem">Checklist complete!</h2>
+        <p class="muted" style="margin-bottom:1rem">Ready to take departure photos?</p>
+        <a class="btn btn-primary" id="photos-link" href="/pages/photos/">Take photos</a>
+        <button class="btn btn-secondary mt1" id="restart-btn">Start new checklist</button>
+      </div>
+    </div>
+  </main>
+  <div id="auth-modal" class="modal hidden" role="dialog" aria-modal="true">
+    <div class="modal-card">
+      <h2>Enter password</h2>
+      <form id="auth-form">
+        <input type="password" id="auth-password" placeholder="Password" autocomplete="current-password" required>
+        <button type="submit" class="btn btn-primary">Unlock</button>
+      </form>
+      <p id="auth-error" class="error hidden">Incorrect password</p>
+    </div>
+  </div>
+  <script src="/assets/app.js" type="module"></script>
+  <script type="module">
+    const LS_KEY = 'cabin_checklist_session';
+    let session = null;
+    let items = [];
+
+    function esc(s) {
+      return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    async function init() {
+      // Load items
+      const res = await fetch(`${CabinOS.API}/checklist/items`);
+      items = await res.json();
+
+      // Check for active session in localStorage (offline resilience)
+      const local = localStorage.getItem(LS_KEY);
+      if (local) {
+        session = JSON.parse(local);
+        showChecklist();
+        return;
+      }
+
+      // Check for active session on server
+      const activeRes = await fetch(`${CabinOS.API}/checklist/sessions/active`);
+      const active = await activeRes.json();
+      if (active) {
+        session = active;
+        localStorage.setItem(LS_KEY, JSON.stringify(session));
+        showChecklist();
+      }
+    }
+
+    async function startSession() {
+      if (!CabinOS.getToken()) {
+        CabinOS.showAuthModal(startSession);
+        return;
+      }
+      const id = CabinOS.ulid();
+      const started_at = Math.floor(Date.now() / 1000);
+      const res = await CabinOS.apiFetch('/checklist/sessions', {
+        method: 'POST',
+        body: JSON.stringify({ id, started_at }),
+      });
+      session = await res.json();
+      localStorage.setItem(LS_KEY, JSON.stringify(session));
+      showChecklist();
+    }
+
+    function showChecklist() {
+      document.getElementById('start-view').classList.add('hidden');
+      document.getElementById('checklist-view').classList.remove('hidden');
+      renderChecklist();
+    }
+
+    function renderChecklist() {
+      const bySection = {};
+      for (const item of items) {
+        if (!bySection[item.section]) bySection[item.section] = [];
+        bySection[item.section].push(item);
+      }
+
+      const container = document.getElementById('checklist-sections');
+      container.innerHTML = Object.entries(bySection).map(([sec, secItems]) => `
+        <div class="section-label">${esc(sec)}</div>
+        <div class="card">
+          ${secItems.map(item => {
+            const checked = session.checked_ids.includes(item.id);
+            return `
+              <div class="checklist-item${checked ? ' checked' : ''}" data-id="${item.id}">
+                <input type="checkbox" id="item-${item.id}" ${checked ? 'checked' : ''}>
+                <label for="item-${item.id}">${esc(item.label)}</label>
+              </div>`;
+          }).join('')}
+        </div>`).join('');
+
+      container.querySelectorAll('.checklist-item').forEach(el => {
+        el.addEventListener('click', (e) => {
+          if (e.target.tagName === 'INPUT') return; // handled by checkbox change
+          const cb = el.querySelector('input[type=checkbox]');
+          cb.checked = !cb.checked;
+          toggleItem(el.dataset.id, cb.checked);
+        });
+        el.querySelector('input').addEventListener('change', (e) => {
+          toggleItem(el.dataset.id, e.target.checked);
+        });
+      });
+
+      updateProgress();
+    }
+
+    async function toggleItem(id, checked) {
+      if (checked) {
+        if (!session.checked_ids.includes(id)) session.checked_ids.push(id);
+      } else {
+        session.checked_ids = session.checked_ids.filter(x => x !== id);
+      }
+      localStorage.setItem(LS_KEY, JSON.stringify(session));
+      updateProgress();
+
+      // Sync to server (best-effort)
+      try {
+        await CabinOS.apiFetch(`/checklist/sessions/${session.id}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ checked_ids: session.checked_ids, notes: null }),
+        });
+      } catch (e) { /* offline — local state is preserved */ }
+    }
+
+    function updateProgress() {
+      const total = items.length;
+      const done = session.checked_ids.length;
+      const pct = total ? Math.round(done / total * 100) : 0;
+      document.getElementById('progress-fill').style.width = `${pct}%`;
+      document.getElementById('progress-label').textContent = `${done} / ${total} complete`;
+      document.getElementById('complete-btn').disabled = done < total;
+
+      // Re-render checked state without full rebuild
+      document.querySelectorAll('.checklist-item').forEach(el => {
+        const checked = session.checked_ids.includes(el.dataset.id);
+        el.classList.toggle('checked', checked);
+        el.querySelector('input').checked = checked;
+      });
+    }
+
+    async function completeSession() {
+      const completed_at = Math.floor(Date.now() / 1000);
+      const res = await CabinOS.apiFetch(`/checklist/sessions/${session.id}/complete`, {
+        method: 'POST',
+        body: JSON.stringify({ completed_at, notes: null }),
+      });
+      if (res.ok) {
+        localStorage.removeItem(LS_KEY);
+        document.getElementById('photos-link').href = `/pages/photos/?session_id=${session.id}`;
+        document.getElementById('checklist-view').classList.add('hidden');
+        document.getElementById('done-view').classList.remove('hidden');
+      }
+    }
+
+    document.getElementById('start-btn').addEventListener('click', startSession);
+    document.getElementById('complete-btn').addEventListener('click', completeSession);
+    document.getElementById('abandon-btn').addEventListener('click', () => {
+      localStorage.removeItem(LS_KEY);
+      session = null;
+      document.getElementById('checklist-view').classList.add('hidden');
+      document.getElementById('start-view').classList.remove('hidden');
+    });
+    document.getElementById('restart-btn').addEventListener('click', () => {
+      document.getElementById('done-view').classList.add('hidden');
+      document.getElementById('start-view').classList.remove('hidden');
+    });
+
+    init();
+  </script>
+</body>
+</html>

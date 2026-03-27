@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Photos — Cabin OS</title>
+  <link rel="stylesheet" href="/assets/style.css">
+</head>
+<body>
+  <nav id="nav">
+    <a href="/" class="nav-brand">Cabin OS</a>
+    <div class="nav-links">
+      <a href="/pages/wiki/">Wiki</a>
+      <a href="/pages/shutdown/">Shutdown</a>
+      <a href="/pages/photos/">Photos</a>
+      <a href="/pages/contacts/">Contacts</a>
+      <a href="/pages/settings/">Settings</a>
+    </div>
+  </nav>
+  <main>
+    <h1 class="page-title">Photos</h1>
+
+    <!-- Upload flow -->
+    <div id="upload-flow" class="hidden">
+      <div class="card photo-upload-flow">
+        <h2 id="upload-category-label" style="color:var(--green-dark)"></h2>
+        <p class="muted" id="upload-step-label"></p>
+        <input type="file" id="photo-input" accept="image/*" capture="environment" style="display:none">
+        <button class="btn btn-primary" id="pick-photo-btn">Take / choose photo</button>
+        <img id="photo-preview" class="photo-thumb hidden" style="max-width:240px" alt="Preview">
+        <div class="checklist-actions">
+          <button class="btn btn-primary hidden" id="upload-btn">Upload</button>
+          <button class="btn btn-secondary" id="skip-btn">Skip</button>
+          <button class="btn btn-secondary" id="done-btn">Finish</button>
+        </div>
+        <p id="upload-error" class="error hidden"></p>
+      </div>
+    </div>
+
+    <!-- Browse -->
+    <div id="browse-view">
+      <div style="display:flex;gap:.75rem;align-items:center;margin-bottom:1rem;flex-wrap:wrap">
+        <select id="filter-category" style="width:auto;flex:1;min-width:140px">
+          <option value="">All categories</option>
+        </select>
+        <button class="btn btn-primary" id="start-upload-btn">+ Add photos</button>
+      </div>
+      <div class="photo-grid" id="photo-grid">
+        <p class="muted">Loading…</p>
+      </div>
+    </div>
+  </main>
+  <div id="auth-modal" class="modal hidden" role="dialog" aria-modal="true">
+    <div class="modal-card">
+      <h2>Enter password</h2>
+      <form id="auth-form">
+        <input type="password" id="auth-password" placeholder="Password" autocomplete="current-password" required>
+        <button type="submit" class="btn btn-primary">Unlock</button>
+      </form>
+      <p id="auth-error" class="error hidden">Incorrect password</p>
+    </div>
+  </div>
+  <script src="/assets/app.js" type="module"></script>
+  <script type="module">
+    const params = new URLSearchParams(location.search);
+    const sessionId = params.get('session_id') || null;
+    let categories = [];
+    let uploadQueue = [];
+    let uploadIdx = 0;
+    let selectedFile = null;
+
+    async function init() {
+      const res = await fetch(`${CabinOS.API}/photo-categories`);
+      categories = await res.json();
+
+      const sel = document.getElementById('filter-category');
+      categories.forEach(c => {
+        const o = document.createElement('option');
+        o.value = c.id; o.textContent = c.label;
+        sel.appendChild(o);
+      });
+      sel.addEventListener('change', loadPhotos);
+
+      if (sessionId) {
+        startUploadFlow();
+      } else {
+        loadPhotos();
+      }
+    }
+
+    async function loadPhotos() {
+      const catId = document.getElementById('filter-category').value;
+      let url = `${CabinOS.API}/photos`;
+      if (catId) url += `?category_id=${catId}`;
+      const res = await fetch(url);
+      const photos = await res.json();
+      const grid = document.getElementById('photo-grid');
+      if (!photos.length) { grid.innerHTML = '<p class="muted">No photos yet.</p>'; return; }
+      grid.innerHTML = photos.map(p =>
+        `<img class="photo-thumb" src="${p.url}" alt="${p.category_label}" loading="lazy" title="${p.category_label}">`
+      ).join('');
+    }
+
+    function startUploadFlow() {
+      if (!CabinOS.getToken()) {
+        CabinOS.showAuthModal(startUploadFlow);
+        return;
+      }
+      uploadQueue = [...categories];
+      uploadIdx = 0;
+      document.getElementById('browse-view').classList.add('hidden');
+      document.getElementById('upload-flow').classList.remove('hidden');
+      showUploadStep();
+    }
+
+    function showUploadStep() {
+      if (uploadIdx >= uploadQueue.length) {
+        finishUpload();
+        return;
+      }
+      const cat = uploadQueue[uploadIdx];
+      document.getElementById('upload-category-label').textContent = cat.label;
+      document.getElementById('upload-step-label').textContent =
+        `${uploadIdx + 1} of ${uploadQueue.length}`;
+      selectedFile = null;
+      document.getElementById('photo-preview').classList.add('hidden');
+      document.getElementById('upload-btn').classList.add('hidden');
+      document.getElementById('upload-error').classList.add('hidden');
+    }
+
+    document.getElementById('pick-photo-btn').addEventListener('click', () => {
+      document.getElementById('photo-input').click();
+    });
+
+    document.getElementById('photo-input').addEventListener('change', (e) => {
+      selectedFile = e.target.files[0];
+      if (!selectedFile) return;
+      const preview = document.getElementById('photo-preview');
+      preview.src = URL.createObjectURL(selectedFile);
+      preview.classList.remove('hidden');
+      document.getElementById('upload-btn').classList.remove('hidden');
+    });
+
+    document.getElementById('upload-btn').addEventListener('click', async () => {
+      if (!selectedFile) return;
+      const cat = uploadQueue[uploadIdx];
+      const id = CabinOS.ulid();
+      const taken_at = Math.floor(Date.now() / 1000);
+      const errEl = document.getElementById('upload-error');
+      errEl.classList.add('hidden');
+
+      try {
+        // 1. Get presigned URL
+        const presignRes = await CabinOS.apiFetch('/photos/presign', {
+          method: 'POST',
+          body: JSON.stringify({
+            id, category_id: cat.id, session_id: sessionId,
+            taken_at, content_type: selectedFile.type,
+          }),
+        });
+        const { upload_url, r2_key } = await presignRes.json();
+
+        // 2. Upload directly to R2
+        await fetch(upload_url, {
+          method: 'PUT',
+          headers: { 'Content-Type': selectedFile.type },
+          body: selectedFile,
+        });
+
+        // 3. Confirm
+        await CabinOS.apiFetch('/photos/confirm', {
+          method: 'POST',
+          body: JSON.stringify({
+            id, category_id: cat.id, session_id: sessionId,
+            r2_key, taken_at, notes: null,
+          }),
+        });
+
+        uploadIdx++;
+        showUploadStep();
+      } catch (err) {
+        errEl.textContent = 'Upload failed. Please try again.';
+        errEl.classList.remove('hidden');
+      }
+    });
+
+    document.getElementById('skip-btn').addEventListener('click', () => {
+      uploadIdx++;
+      showUploadStep();
+    });
+
+    document.getElementById('done-btn').addEventListener('click', finishUpload);
+
+    function finishUpload() {
+      document.getElementById('upload-flow').classList.add('hidden');
+      document.getElementById('browse-view').classList.remove('hidden');
+      loadPhotos();
+    }
+
+    document.getElementById('start-upload-btn').addEventListener('click', startUploadFlow);
+
+    init();
+  </script>
+</body>
+</html>
