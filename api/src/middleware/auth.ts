@@ -21,7 +21,7 @@ export async function requireAuth(request: Request, env: Env): Promise<Response 
 
 export async function signJwt(secret: string): Promise<string> {
   const now = Math.floor(Date.now() / 1000);
-  const payload = { iat: now, exp: now + 30 * 24 * 60 * 60 };
+  const payload = { iat: now, exp: now + 365 * 24 * 60 * 60 };
   const header = b64url(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));
   const body = b64url(JSON.stringify(payload));
   const data = `${header}.${body}`;
