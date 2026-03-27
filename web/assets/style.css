@@ -15,7 +15,7 @@
 }
 
 html, body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
   background: var(--tan);
   color: var(--text);
   min-height: 100dvh;
