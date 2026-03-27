@@ -4,6 +4,8 @@ import { handleContacts } from './routes/contacts';
 import { handleChecklist } from './routes/checklist';
 import { handlePhotos } from './routes/photos';
 import { handlePhotoCategories } from './routes/photo-categories';
+import { handleVideos } from './routes/videos';
+import { handleBusinesses } from './routes/businesses';
 
 export interface Env {
   DB: D1Database;
@@ -48,6 +50,10 @@ export default {
         response = await handlePhotoCategories(request, env, path);
       } else if (path.startsWith('/api/photos')) {
         response = await handlePhotos(request, env, path);
+      } else if (path.startsWith('/api/videos')) {
+        response = await handleVideos(request, env, path);
+      } else if (path.startsWith('/api/businesses')) {
+        response = await handleBusinesses(request, env, path);
       } else {
         response = json({ error: 'Not found' }, 404);
       }

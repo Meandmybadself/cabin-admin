@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Businesses — Cabin OS</title>
+  <link rel="stylesheet" href="/assets/style.css">
+  <style>
+    .business-card {
+      background:#fff; border-radius:var(--radius); box-shadow:var(--shadow);
+      padding:1.25rem; margin-bottom:.75rem;
+    }
+    .business-header {
+      display:flex; align-items:flex-start; justify-content:space-between; gap:.75rem;
+    }
+    .business-name { font-weight:700; font-size:1.05rem; color:var(--green-dark); }
+    .business-category { font-size:.75rem; font-weight:600; color:var(--green-light); text-transform:uppercase; letter-spacing:.05em; }
+    .open-badge {
+      display:inline-block; padding:.2rem .6rem; border-radius:99px;
+      font-size:.75rem; font-weight:700; white-space:nowrap; flex-shrink:0;
+    }
+    .open-badge.open   { background:#d4edda; color:#155724; }
+    .open-badge.closed { background:#f8d7da; color:#721c24; }
+    .open-badge.unknown { background:var(--tan-dark); color:var(--text-muted); }
+    .business-desc { font-size:.9rem; color:var(--text-muted); margin:.5rem 0; }
+    .business-meta { display:flex; flex-wrap:wrap; gap:.5rem .75rem; margin-top:.75rem; }
+    .business-meta a, .business-meta span {
+      font-size:.85rem; color:var(--green-mid); text-decoration:none;
+    }
+    .business-meta a:hover { text-decoration:underline; }
+    .business-meta .sep { color:var(--tan-dark); }
+    .hours-grid {
+      display:grid; grid-template-columns:auto 1fr;
+      gap:.2rem .75rem; font-size:.85rem; margin-top:.75rem;
+    }
+    .hours-day { color:var(--text-muted); text-transform:capitalize; }
+    .hours-time { color:var(--text); }
+    .hours-time.today { font-weight:700; color:var(--green-dark); }
+    .closed-months-note { font-size:.82rem; color:#721c24; margin-top:.5rem; }
+  </style>
+</head>
+<body>
+  <nav id="nav">
+    <a href="/" class="nav-brand">Cabin OS</a>
+    <div class="nav-links">
+      <a href="/pages/wiki/">Wiki</a>
+      <a href="/pages/shutdown/">Shutdown</a>
+      <a href="/pages/photos/">Photos</a>
+      <a href="/pages/contacts/">Contacts</a>
+      <a href="/pages/businesses/">Businesses</a>
+      <a href="/pages/settings/">Settings</a>
+    </div>
+  </nav>
+  <main>
+    <h1 class="page-title">Businesses</h1>
+    <div id="business-list"><p class="muted">Loading…</p></div>
+  </main>
+
+  <div id="auth-modal" class="modal hidden" role="dialog" aria-modal="true">
+    <div class="modal-card">
+      <h2>Enter password</h2>
+      <form id="auth-form">
+        <input type="password" id="auth-password" placeholder="Password" autocomplete="current-password" required>
+        <button type="submit" class="btn btn-primary">Unlock</button>
+      </form>
+      <p id="auth-error" class="error hidden">Incorrect password</p>
+    </div>
+  </div>
+
+  <script src="/assets/app.js" type="module"></script>
+  <script type="module">
+    const DAYS = ['sun','mon','tue','wed','thu','fri','sat'];
+    const DAY_LABELS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+    const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
+    // Current time in US Central (CT)
+    function nowCT() {
+      const ct = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Chicago' }));
+      return {
+        month: ct.getMonth() + 1, // 1-12
+        dow: ct.getDay(),         // 0=Sun
+        h: ct.getHours(),
+        m: ct.getMinutes(),
+        minuteOfDay: ct.getHours() * 60 + ct.getMinutes(),
+      };
+    }
+
+    function parseTime(t) { // "HH:MM" → minutes from midnight
+      const [h, m] = t.split(':').map(Number);
+      return h * 60 + m;
+    }
+
+    function fmt12(t) {
+      const [h, m] = t.split(':').map(Number);
+      const ampm = h >= 12 ? 'pm' : 'am';
+      const h12 = h % 12 || 12;
+      return m === 0 ? `${h12}${ampm}` : `${h12}:${String(m).padStart(2,'0')}${ampm}`;
+    }
+
+    function isOpenNow(hours, closedMonths) {
+      const now = nowCT();
+      if (closedMonths.includes(now.month)) return 'closed';
+      const dayKey = DAYS[now.dow];
+      const slot = hours[dayKey];
+      if (!slot) return 'closed';
+      const open = parseTime(slot.open);
+      const close = parseTime(slot.close);
+      return now.minuteOfDay >= open && now.minuteOfDay < close ? 'open' : 'closed';
+    }
+
+    function mapsUrl(address) {
+      return 'https://maps.google.com/?q=' + encodeURIComponent(address);
+    }
+
+    function esc(s) {
+      return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    function renderBusiness(b) {
+      const hours = b.hours || {};
+      const closedMonths = b.closed_months || [];
+      const status = (Object.keys(hours).length || closedMonths.length) ? isOpenNow(hours, closedMonths) : 'unknown';
+      const badgeClass = status === 'open' ? 'open' : status === 'closed' ? 'closed' : 'unknown';
+      const badgeText = status === 'open' ? 'Open now' : status === 'closed' ? 'Closed' : '';
+      const now = nowCT();
+
+      const hoursRows = DAYS.map((d, i) => {
+        const slot = hours[d];
+        const isToday = i === now.dow;
+        return slot
+          ? `<span class="hours-day">${DAY_LABELS[i]}</span><span class="hours-time${isToday?' today':''}">${fmt12(slot.open)} – ${fmt12(slot.close)}</span>`
+          : `<span class="hours-day">${DAY_LABELS[i]}</span><span class="hours-time${isToday?' today':''}">Closed</span>`;
+      }).join('');
+
+      const closedNote = closedMonths.length
+        ? `<div class="closed-months-note">Closed in: ${closedMonths.map(m => MONTH_NAMES[m-1]).join(', ')}</div>`
+        : '';
+
+      const meta = [];
+      if (b.phone) meta.push(`<a href="tel:${esc(b.phone)}">${esc(b.phone)}</a>`);
+      if (b.address) meta.push(`<a href="${esc(mapsUrl(b.address))}" target="_blank" rel="noopener">Directions</a>`);
+      if (b.website) meta.push(`<a href="${esc(b.website)}" target="_blank" rel="noopener">Website</a>`);
+
+      return `
+        <div class="business-card">
+          <div class="business-header">
+            <div>
+              <div class="business-name">${esc(b.name)}</div>
+              ${b.category ? `<div class="business-category">${esc(b.category)}</div>` : ''}
+            </div>
+            ${badgeText ? `<span class="open-badge ${badgeClass}">${badgeText}</span>` : ''}
+          </div>
+          ${b.description ? `<div class="business-desc">${esc(b.description)}</div>` : ''}
+          ${meta.length ? `<div class="business-meta">${meta.join('<span class="sep"> · </span>')}</div>` : ''}
+          ${Object.keys(hours).length ? `<div class="hours-grid">${hoursRows}</div>${closedNote}` : ''}
+        </div>`;
+    }
+
+    async function load() {
+      const res = await fetch(`${CabinOS.API}/businesses`);
+      const businesses = await res.json();
+      const container = document.getElementById('business-list');
+      if (!businesses.length) { container.innerHTML = '<p class="muted">No businesses yet.</p>'; return; }
+      const byCategory = {};
+      for (const b of businesses) (byCategory[b.category] = byCategory[b.category] || []).push(b);
+      container.innerHTML = Object.entries(byCategory).map(([cat, items]) => `
+        ${cat ? `<div class="section-label">${esc(cat)}</div>` : ''}
+        ${items.map(renderBusiness).join('')}`
+      ).join('');
+    }
+
+    load();
+  </script>
+</body>
+</html>
