@@ -216,12 +216,24 @@
 
     // ── Filter ──
     let activeFilter = null;
+    let filterOpenNow = false;
     function buildFilterBar(businesses) {
       const allTags = [...new Set(businesses.flatMap(b => b.tags || []))].sort();
       const bar = document.getElementById('filter-bar');
       if (!allTags.length) { bar.style.display = 'none'; return; }
       bar.style.display = 'flex';
       bar.innerHTML = '';
+
+      const openChip = document.createElement('button');
+      openChip.className = 'filter-chip' + (filterOpenNow ? ' active' : '');
+      openChip.textContent = 'Open now';
+      openChip.addEventListener('click', () => {
+        filterOpenNow = !filterOpenNow;
+        buildFilterBar(businesses);
+        renderList(businesses);
+      });
+      bar.appendChild(openChip);
+
       allTags.forEach(tag => {
         const chip = document.createElement('button');
         chip.className = 'filter-chip' + (activeFilter === tag ? ' active' : '');
@@ -235,7 +247,9 @@
       });
     }
     function renderList(businesses) {
-      const filtered = activeFilter ? businesses.filter(b => (b.tags || []).includes(activeFilter)) : businesses;
+      let filtered = businesses;
+      if (filterOpenNow) filtered = filtered.filter(b => isOpenNow(b.hours || {}, b.closed_months || []) === 'open');
+      if (activeFilter)  filtered = filtered.filter(b => (b.tags || []).includes(activeFilter));
       const container = document.getElementById('business-list');
       if (!filtered.length) { container.innerHTML = '<p class="muted">No businesses match.</p>'; return; }
       const byCategory = {};
