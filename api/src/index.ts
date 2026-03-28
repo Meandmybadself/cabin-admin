@@ -1,4 +1,3 @@
-import { handleAuth } from './routes/auth';
 import { handleDocs } from './routes/docs';
 import { handleContacts } from './routes/contacts';
 import { handleChecklist } from './routes/checklist';
@@ -6,13 +5,12 @@ import { handlePhotos } from './routes/photos';
 import { handlePhotoCategories } from './routes/photo-categories';
 import { handleVideos } from './routes/videos';
 import { handleBusinesses } from './routes/businesses';
+import { validateBasicAuth } from './middleware/auth';
 
 export interface Env {
   DB: D1Database;
   KV: KVNamespace;
   PHOTOS: R2Bucket;
-  SHARED_PASSWORD: string;
-  JWT_SECRET: string;
 }
 
 const CORS_HEADERS = {
@@ -36,33 +34,50 @@ export default {
       return new Response(null, { status: 204, headers: CORS_HEADERS });
     }
 
-    let response: Response;
-    try {
-      if (path === '/api/auth/login') {
-        response = await handleAuth(request, env);
-      } else if (path.startsWith('/api/docs')) {
-        response = await handleDocs(request, env, path);
-      } else if (path.startsWith('/api/contacts')) {
-        response = await handleContacts(request, env, path);
-      } else if (path.startsWith('/api/checklist')) {
-        response = await handleChecklist(request, env, path);
-      } else if (path.startsWith('/api/photo-categories')) {
-        response = await handlePhotoCategories(request, env, path);
-      } else if (path.startsWith('/api/photos')) {
-        response = await handlePhotos(request, env, path);
-      } else if (path.startsWith('/api/videos')) {
-        response = await handleVideos(request, env, path);
-      } else if (path.startsWith('/api/businesses')) {
-        response = await handleBusinesses(request, env, path);
-      } else {
-        response = json({ error: 'Not found' }, 404);
+    // Global auth gate
+    const authErr = await validateBasicAuth(request, env);
+    if (authErr) return authErr;
+
+    // API routes
+    if (path.startsWith('/api/')) {
+      let response: Response;
+      try {
+        if (path.startsWith('/api/docs')) {
+          response = await handleDocs(request, env, path);
+        } else if (path.startsWith('/api/contacts')) {
+          response = await handleContacts(request, env, path);
+        } else if (path.startsWith('/api/checklist')) {
+          response = await handleChecklist(request, env, path);
+        } else if (path.startsWith('/api/photo-categories')) {
+          response = await handlePhotoCategories(request, env, path);
+        } else if (path.startsWith('/api/photos')) {
+          response = await handlePhotos(request, env, path);
+        } else if (path.startsWith('/api/videos')) {
+          response = await handleVideos(request, env, path);
+        } else if (path.startsWith('/api/businesses')) {
+          response = await handleBusinesses(request, env, path);
+        } else {
+          response = json({ error: 'Not found' }, 404);
+        }
+      } catch (err) {
+        console.error(err);
+        response = json({ error: 'Internal server error' }, 500);
       }
-    } catch (err) {
-      console.error(err);
-      response = json({ error: 'Internal server error' }, 500);
+      return cors(response);
     }
 
-    return cors(response);
+    // Static frontend — proxy to GitHub Pages origin
+    const proxyReq = new Request(request.url, {
+      method: request.method,
+      headers: (() => {
+        const h = new Headers(request.headers);
+        h.delete('Authorization');
+        return h;
+      })(),
+      body: request.body,
+      redirect: 'follow',
+    });
+    return fetch(proxyReq);
   },
 };
 

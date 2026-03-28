@@ -97,11 +97,6 @@
       </form>
     </div>
 
-    <!-- Auth -->
-    <div class="section-label">Session</div>
-    <div class="card">
-      <button class="btn btn-secondary" id="logout-btn">Log out</button>
-    </div>
   </main>
 
   <script src="/assets/app.js" type="module"></script>
@@ -313,10 +308,6 @@
         body: JSON.stringify({ id: CabinOS.ulid(), label: document.getElementById('new-item-label').value.trim(), section: document.getElementById('new-item-section').value.trim(), sort_order: 999 }),
       });
       if (res.ok) { document.getElementById('new-item-label').value = ''; loadChecklistItems(); }
-    });
-
-    document.getElementById('logout-btn').addEventListener('click', () => {
-      CabinOS.clearToken(); CabinOS.showGate();
     });
 
     loadVideos();
