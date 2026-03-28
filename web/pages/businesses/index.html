@@ -88,7 +88,7 @@
   <!-- Add business modal -->
   <div id="add-modal" class="modal hidden" role="dialog" aria-modal="true">
     <div class="add-modal-card">
-      <h2>Add business</h2>
+      <h2 id="modal-title">Add business</h2>
       <form id="add-business-form">
         <div class="form-row">
           <label>Name *</label>
@@ -194,7 +194,10 @@
           ${meta.length ? `<div class="business-meta">${meta.join('<span class="sep"> · </span>')}</div>` : ''}
           ${Object.keys(hours).length ? `<div class="hours-grid">${hoursRows}</div>` : ''}
           ${closedMonths.length ? `<div class="closed-months-note">Closed in: ${closedMonths.map(m=>MONTH_NAMES[m-1]).join(', ')}</div>` : ''}
-          <button class="btn btn-danger delete-biz-btn" data-id="${b.id}">Delete</button>
+          <div style="display:flex;gap:.5rem;margin-top:.75rem">
+            <button class="btn btn-secondary edit-biz-btn" data-id="${b.id}">Edit</button>
+            <button class="btn btn-danger delete-biz-btn" data-id="${b.id}">Delete</button>
+          </div>
         </div>`;
     }
 
@@ -210,11 +213,13 @@
       ).join('');
       container.querySelectorAll('.delete-biz-btn').forEach(btn => {
         btn.addEventListener('click', async () => {
-          if (!CabinOS.getToken()) { CabinOS.showAuthModal(() => {}); return; }
           if (!confirm('Delete this business?')) return;
           await CabinOS.apiFetch(`/businesses/${btn.dataset.id}`, { method: 'DELETE' });
           load();
         });
+      });
+      container.querySelectorAll('.edit-biz-btn').forEach(btn => {
+        btn.addEventListener('click', () => openModal(btn.dataset.id));
       });
     }
 
@@ -251,19 +256,46 @@
     function resetMonths() { document.querySelectorAll('.month-chip').forEach(c=>c.classList.remove('selected')); }
 
     // ── Modal open/close ──
-    function openModal() {
-      if (!CabinOS.getToken()) { CabinOS.showAuthModal(openModal); return; }
-      document.getElementById('add-modal').classList.remove('hidden');
-    }
-    function closeModal() {
-      document.getElementById('add-modal').classList.add('hidden');
+    let editingId = null;
+
+    async function openModal(id = null) {
+      editingId = id;
+      document.getElementById('modal-title').textContent = id ? 'Edit business' : 'Add business';
       document.getElementById('add-business-form').reset();
       resetHours();
       resetMonths();
       document.getElementById('add-error').classList.add('hidden');
+
+      if (id) {
+        const res = await CabinOS.apiFetch(`/businesses/${id}`);
+        const b = await res.json();
+        document.getElementById('biz-name').value        = b.name || '';
+        document.getElementById('biz-category').value    = b.category || '';
+        document.getElementById('biz-description').value = b.description || '';
+        document.getElementById('biz-address').value     = b.address || '';
+        document.getElementById('biz-phone').value       = b.phone || '';
+        document.getElementById('biz-website').value     = b.website || '';
+        const hours = b.hours || {};
+        DAYS.forEach(d => {
+          if (hours[d]) {
+            document.getElementById(`h-open-${d}`).value  = hours[d].open;
+            document.getElementById(`h-close-${d}`).value = hours[d].close;
+          }
+        });
+        (b.closed_months || []).forEach(m => {
+          document.querySelector(`.month-chip[data-month="${m}"]`)?.classList.add('selected');
+        });
+      }
+
+      document.getElementById('add-modal').classList.remove('hidden');
     }
 
-    document.getElementById('add-btn').addEventListener('click', openModal);
+    function closeModal() {
+      document.getElementById('add-modal').classList.add('hidden');
+      editingId = null;
+    }
+
+    document.getElementById('add-btn').addEventListener('click', () => openModal());
     document.getElementById('cancel-btn').addEventListener('click', closeModal);
     document.getElementById('add-modal').addEventListener('click', e => {
       if (e.target === document.getElementById('add-modal')) closeModal();
@@ -274,21 +306,20 @@
       e.preventDefault();
       const errEl = document.getElementById('add-error');
       errEl.classList.add('hidden');
-      const res = await CabinOS.apiFetch('/businesses', {
-        method: 'POST',
-        body: JSON.stringify({
-          id: CabinOS.ulid(),
-          name: document.getElementById('biz-name').value.trim(),
-          category: document.getElementById('biz-category').value.trim(),
-          description: document.getElementById('biz-description').value.trim(),
-          address: document.getElementById('biz-address').value.trim(),
-          phone: document.getElementById('biz-phone').value.trim(),
-          website: document.getElementById('biz-website').value.trim(),
-          hours: readHours(),
-          closed_months: readClosedMonths(),
-          sort_order: 0,
-        }),
-      });
+      const payload = {
+        name: document.getElementById('biz-name').value.trim(),
+        category: document.getElementById('biz-category').value.trim(),
+        description: document.getElementById('biz-description').value.trim(),
+        address: document.getElementById('biz-address').value.trim(),
+        phone: document.getElementById('biz-phone').value.trim(),
+        website: document.getElementById('biz-website').value.trim(),
+        hours: readHours(),
+        closed_months: readClosedMonths(),
+        sort_order: 0,
+      };
+      const res = editingId
+        ? await CabinOS.apiFetch(`/businesses/${editingId}`, { method: 'PUT', body: JSON.stringify(payload) })
+        : await CabinOS.apiFetch('/businesses', { method: 'POST', body: JSON.stringify({ id: CabinOS.ulid(), ...payload }) });
       if (res.ok) {
         closeModal();
         load();
