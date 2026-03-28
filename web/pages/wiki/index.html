@@ -6,6 +6,23 @@
   <title>Wiki — Cabin OS</title>
   <link rel="stylesheet" href="/assets/style.css">
   <style>
+    #doc-layout { display:block; }
+    #doc-placeholder { color:var(--text-muted); font-size:.95rem; padding:.5rem 0; }
+    .doc-list a { color:var(--green-mid); }
+    .doc-list a.active { font-weight:700; color:var(--green-dark); }
+
+    @media (min-width: 768px) {
+      #doc-layout {
+        display:grid;
+        grid-template-columns:240px 1fr;
+        gap:1.25rem;
+        align-items:start;
+      }
+      #doc-list-view, #doc-detail-view { display:block !important; }
+      #doc-list-view { position:sticky; top:1rem; }
+      #back-btn { display:none !important; }
+    }
+
     .wiki-tabs { display:flex; gap:.5rem; margin-bottom:1.25rem; }
     .wiki-tab {
       padding:.5rem 1rem; border-radius:var(--radius); border:none;
@@ -66,14 +83,17 @@
     </div>
 
     <div id="tab-docs">
-      <div id="doc-list-view">
-        <div class="card" id="doc-list-card"><p class="muted">Loading…</p></div>
-      </div>
-      <div id="doc-detail-view" class="hidden">
-        <button class="btn btn-secondary" id="back-btn">← Back</button>
-        <div class="card mt1">
-          <h2 id="doc-title" style="margin-bottom:.75rem;color:var(--green-dark)"></h2>
-          <div class="doc-body" id="doc-body"></div>
+      <div id="doc-layout">
+        <div id="doc-list-view">
+          <div class="card" id="doc-list-card"><p class="muted">Loading…</p></div>
+        </div>
+        <div id="doc-detail-view" class="hidden">
+          <button class="btn btn-secondary" id="back-btn">← Back</button>
+          <div class="card mt1">
+            <div id="doc-placeholder">Select a document from the list.</div>
+            <h2 id="doc-title" style="margin-bottom:.75rem;color:var(--green-dark);display:none"></h2>
+            <div class="doc-body" id="doc-body"></div>
+          </div>
         </div>
       </div>
     </div>
@@ -116,6 +136,8 @@
       });
     });
 
+    const isWide = () => window.matchMedia('(min-width: 768px)').matches;
+
     async function loadList() {
       const res = await fetch(`${CabinOS.API}/docs`);
       const docs = await res.json();
@@ -131,14 +153,22 @@
       card.querySelectorAll('a[data-slug]').forEach(a =>
         a.addEventListener('click', e => { e.preventDefault(); loadDoc(a.dataset.slug); })
       );
+      if (isWide()) document.getElementById('doc-detail-view').classList.remove('hidden');
     }
 
     async function loadDoc(slug) {
       const res = await fetch(`${CabinOS.API}/docs/${slug}`);
       if (!res.ok) return;
       const doc = await res.json();
-      document.getElementById('doc-title').textContent = doc.title;
+      document.getElementById('doc-placeholder').style.display = 'none';
+      const titleEl = document.getElementById('doc-title');
+      titleEl.style.display = '';
+      titleEl.textContent = doc.title;
       document.getElementById('doc-body').innerHTML = CabinOS.renderMarkdown(doc.body);
+      document.querySelectorAll('#doc-list-card a[data-slug]').forEach(a =>
+        a.classList.toggle('active', a.dataset.slug === slug)
+      );
+      if (isWide()) return;
       document.getElementById('doc-list-view').classList.add('hidden');
       document.getElementById('doc-detail-view').classList.remove('hidden');
       window.scrollTo(0, 0);
