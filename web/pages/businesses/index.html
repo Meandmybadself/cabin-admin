@@ -289,7 +289,7 @@
       const byCategory = {};
       for (const b of filtered) (byCategory[b.category] = byCategory[b.category] || []).push(b);
       container.innerHTML = Object.entries(byCategory).map(([cat, items]) =>
-        `${cat ? `<div class="section-label">${esc(cat)}</div>` : ''}${items.map(renderBusiness).join('')}`
+        `${cat ? `<div class="section-label">${esc(cat)}</div>` : ''}${items.sort((a,b) => a.name.localeCompare(b.name)).map(renderBusiness).join('')}`
       ).join('');
       container.querySelectorAll('.expand-btn').forEach(btn => {
         btn.addEventListener('click', () => btn.closest('.business-card').classList.toggle('expanded'));
