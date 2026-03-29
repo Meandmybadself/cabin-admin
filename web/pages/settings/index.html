@@ -5,23 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Settings — Cabin OS</title>
   <link rel="stylesheet" href="/assets/style.css">
-  <style>
-    .hours-form-grid {
-      display:grid; grid-template-columns: auto 1fr 1fr;
-      gap:.35rem .5rem; align-items:center; font-size:.85rem; margin-bottom:.75rem;
-    }
-    .hours-form-grid label { color:var(--text-muted); text-transform:capitalize; }
-    .hours-form-grid input[type=time] { padding:.3rem .5rem; font-size:.85rem; }
-    .hours-form-grid input[type=checkbox] { width:1.1rem; height:1.1rem; }
-    .months-grid {
-      display:flex; flex-wrap:wrap; gap:.4rem; margin-bottom:.75rem;
-    }
-    .month-chip {
-      padding:.25rem .6rem; border-radius:99px; border:1.5px solid var(--tan-dark);
-      font-size:.8rem; cursor:pointer; user-select:none; background:#fff;
-    }
-    .month-chip.selected { background:var(--green-mid); color:#fff; border-color:var(--green-mid); }
-  </style>
 </head>
 <body>
   <nav id="nav">
@@ -51,31 +34,6 @@
       </form>
     </div>
 
-    <!-- Businesses -->
-    <div class="section-label">Businesses</div>
-    <div class="card">
-      <ul id="businesses-list" class="contact-list"></ul>
-      <details style="margin-top:1rem">
-        <summary style="cursor:pointer;font-weight:600;color:var(--green-dark)">+ Add business</summary>
-        <form id="add-business-form" style="display:flex;flex-direction:column;gap:.5rem;margin-top:.75rem">
-          <input type="text" id="biz-name" placeholder="Name" required>
-          <input type="text" id="biz-category" placeholder="Category (e.g. Food, Hardware)">
-          <textarea id="biz-description" placeholder="Description" style="min-height:60px"></textarea>
-          <input type="text" id="biz-address" placeholder="Address">
-          <input type="tel" id="biz-phone" placeholder="Phone">
-          <input type="url" id="biz-website" placeholder="Website URL">
-
-          <div style="font-size:.85rem;font-weight:600;margin-top:.25rem">Hours (leave blank = closed that day)</div>
-          <div class="hours-form-grid" id="hours-form"></div>
-
-          <div style="font-size:.85rem;font-weight:600">Closed months</div>
-          <div class="months-grid" id="months-form"></div>
-
-          <button type="submit" class="btn btn-primary">Save business</button>
-        </form>
-      </details>
-    </div>
-
     <!-- Photo categories -->
     <div class="section-label">Photo categories</div>
     <div class="card">
@@ -101,62 +59,8 @@
 
   <script src="/assets/app.js" type="module"></script>
   <script type="module">
-    const DAYS = ['mon','tue','wed','thu','fri','sat','sun'];
-    const DAY_LABELS = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
-    const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-
     function esc(s) {
       return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-    }
-
-    function requireAuth() {
-      if (!CabinOS.getToken()) { CabinOS.showAuthModal(() => {}); return false; }
-      return true;
-    }
-
-    // ── Build hours form ──
-    const hoursForm = document.getElementById('hours-form');
-    DAYS.forEach((d, i) => {
-      hoursForm.innerHTML += `
-        <label>${DAY_LABELS[i]}</label>
-        <input type="time" id="h-open-${d}" placeholder="Open">
-        <input type="time" id="h-close-${d}" placeholder="Close">`;
-    });
-
-    function readHours() {
-      const hours = {};
-      DAYS.forEach(d => {
-        const open = document.getElementById(`h-open-${d}`).value;
-        const close = document.getElementById(`h-close-${d}`).value;
-        if (open && close) hours[d] = { open, close };
-      });
-      return hours;
-    }
-
-    function resetHours() {
-      DAYS.forEach(d => {
-        document.getElementById(`h-open-${d}`).value = '';
-        document.getElementById(`h-close-${d}`).value = '';
-      });
-    }
-
-    // ── Build months form ──
-    const monthsForm = document.getElementById('months-form');
-    MONTHS.forEach((m, i) => {
-      const chip = document.createElement('span');
-      chip.className = 'month-chip';
-      chip.textContent = m.slice(0, 3);
-      chip.dataset.month = i + 1;
-      chip.addEventListener('click', () => chip.classList.toggle('selected'));
-      monthsForm.appendChild(chip);
-    });
-
-    function readClosedMonths() {
-      return Array.from(document.querySelectorAll('.month-chip.selected')).map(c => Number(c.dataset.month));
-    }
-
-    function resetMonths() {
-      document.querySelectorAll('.month-chip').forEach(c => c.classList.remove('selected'));
     }
 
     // ── Videos ──
@@ -198,54 +102,6 @@
       if (res.ok) {
         e.target.reset();
         loadVideos();
-      }
-    });
-
-    // ── Businesses ──
-    async function loadBusinesses() {
-      const res = await fetch(`${CabinOS.API}/businesses`);
-      const businesses = await res.json();
-      const list = document.getElementById('businesses-list');
-      list.innerHTML = businesses.map(b => `
-        <li class="contact-item">
-          <div class="contact-info">
-            <div class="contact-name">${esc(b.name)}</div>
-            <div class="contact-role">${esc(b.category)}</div>
-          </div>
-          <button class="btn btn-danger" data-del-biz="${b.id}" style="padding:.35rem .65rem;font-size:.8rem">Delete</button>
-        </li>`).join('') || '<li class="muted">No businesses.</li>';
-      list.querySelectorAll('[data-del-biz]').forEach(btn => {
-        btn.addEventListener('click', async () => {
-          if (!confirm('Delete this business?')) return;
-          await CabinOS.apiFetch(`/businesses/${btn.dataset.delBiz}`, { method: 'DELETE' });
-          loadBusinesses();
-        });
-      });
-    }
-
-    document.getElementById('add-business-form').addEventListener('submit', async e => {
-      e.preventDefault();
-      if (!requireAuth()) return;
-      const res = await CabinOS.apiFetch('/businesses', {
-        method: 'POST',
-        body: JSON.stringify({
-          id: CabinOS.ulid(),
-          name: document.getElementById('biz-name').value.trim(),
-          category: document.getElementById('biz-category').value.trim(),
-          description: document.getElementById('biz-description').value.trim(),
-          address: document.getElementById('biz-address').value.trim(),
-          phone: document.getElementById('biz-phone').value.trim(),
-          website: document.getElementById('biz-website').value.trim(),
-          hours: readHours(),
-          closed_months: readClosedMonths(),
-          sort_order: 0,
-        }),
-      });
-      if (res.ok) {
-        e.target.reset();
-        resetHours();
-        resetMonths();
-        loadBusinesses();
       }
     });
 
@@ -311,7 +167,6 @@
     });
 
     loadVideos();
-    loadBusinesses();
     loadCategories();
     loadChecklistItems();
   </script>
