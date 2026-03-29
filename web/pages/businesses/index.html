@@ -11,7 +11,10 @@
       padding:1.25rem; margin-bottom:.75rem;
     }
     .business-header {
-      display:flex; align-items:flex-start; justify-content:space-between; gap:.75rem;
+      display:flex; align-items:center; gap:.25rem;
+    }
+    .business-expand-btn {
+      display:flex; align-items:center; gap:.5rem; flex:1; min-width:0;
     }
     .business-name { font-weight:700; font-size:1.05rem; color:var(--green-dark); }
     .business-category { font-size:.75rem; font-weight:600; color:var(--green-light); text-transform:uppercase; letter-spacing:.05em; }
@@ -35,9 +38,20 @@
     .hours-time { color:var(--text); }
     .hours-time.today { font-weight:700; color:var(--green-dark); }
     .closed-months-note { font-size:.82rem; color:#721c24; margin-top:.5rem; }
-    .edit-biz-btn, .delete-biz-btn {
-      padding:.3rem .7rem; font-size:.8rem;
+    .biz-icon-btn {
+      background:none; border:none; cursor:pointer; padding:.3rem; line-height:1;
+      color:var(--text-muted); border-radius:var(--radius);
     }
+    .biz-icon-btn:hover { background:var(--tan-dark); }
+    .biz-icon-btn.delete:hover { background:#f8d7da; color:#721c24; }
+    .business-expand-btn {
+      background:none; border:none; cursor:pointer; padding:0; line-height:1;
+      color:var(--text-muted); display:flex; align-items:center;
+    }
+    .business-expand-btn svg { transition: transform .2s; }
+    .business-card.expanded .business-expand-btn svg { transform: rotate(180deg); }
+    .business-details { display:none; }
+    .business-card.expanded .business-details { display:block; }
 
     .tag { display:inline-block; padding:.15rem .55rem; border-radius:99px; font-size:.75rem; font-weight:600; background:var(--tan-dark); color:var(--text-muted); margin:.1rem .15rem 0 0; }
     #filter-bar { display:flex; flex-direction:column; gap:.5rem; margin-bottom:1rem; }
@@ -276,6 +290,9 @@
       container.innerHTML = Object.entries(byCategory).map(([cat, items]) =>
         `${cat ? `<div class="section-label">${esc(cat)}</div>` : ''}${items.map(renderBusiness).join('')}`
       ).join('');
+      container.querySelectorAll('.expand-btn').forEach(btn => {
+        btn.addEventListener('click', () => btn.closest('.business-card').classList.toggle('expanded'));
+      });
       container.querySelectorAll('.delete-biz-btn').forEach(btn => {
         btn.addEventListener('click', async () => {
           if (!confirm('Delete this business?')) return;
@@ -307,23 +324,33 @@
       if (b.address) meta.push(`<a href="${esc(mapsUrl(b.address))}" target="_blank" rel="noopener">Directions</a>`);
       if (b.website) meta.push(`<a href="${esc(b.website)}" target="_blank" rel="noopener">Website</a>`);
 
+      const hasDetails = Object.keys(hours).length || closedMonths.length || meta.length || b.description || (b.tags||[]).length;
       return `
         <div class="business-card" data-id="${b.id}">
           <div class="business-header">
-            <div>
-              <div class="business-name">${esc(b.name)}</div>
-              ${b.category ? `<div class="business-category">${esc(b.category)}</div>` : ''}
-            </div>
-            ${badgeText ? `<span class="open-badge ${status}">${badgeText}</span>` : ''}
+            <button class="business-expand-btn expand-btn" data-id="${b.id}" style="flex:1;text-align:left;gap:.5rem">
+              <div style="flex:1">
+                <div class="business-name">${esc(b.name)}</div>
+                ${b.category ? `<div class="business-category">${esc(b.category)}</div>` : ''}
+              </div>
+              <div style="display:flex;align-items:center;gap:.5rem;flex-shrink:0">
+                ${badgeText ? `<span class="open-badge ${status}">${badgeText}</span>` : ''}
+                ${hasDetails ? `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4,6 8,10 12,6"/></svg>` : ''}
+              </div>
+            </button>
+            <button class="biz-icon-btn edit-biz-btn" data-id="${b.id}" title="Edit">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+            </button>
+            <button class="biz-icon-btn delete delete-biz-btn" data-id="${b.id}" title="Delete">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+            </button>
           </div>
-          ${b.description ? `<div class="business-desc">${esc(b.description)}</div>` : ''}
-          ${(b.tags||[]).length ? `<div style="margin-top:.4rem">${b.tags.map(t=>`<span class="tag">${esc(t)}</span>`).join('')}</div>` : ''}
-          ${meta.length ? `<div class="business-meta">${meta.join('<span class="sep"> · </span>')}</div>` : ''}
-          ${Object.keys(hours).length ? `<div class="hours-grid">${hoursRows}</div>` : ''}
-          ${closedMonths.length ? `<div class="closed-months-note">Closed in: ${closedMonths.map(m=>MONTH_NAMES[m-1]).join(', ')}</div>` : ''}
-          <div style="display:flex;gap:.5rem;margin-top:.75rem">
-            <button class="btn btn-secondary edit-biz-btn" data-id="${b.id}">Edit</button>
-            <button class="btn btn-danger delete-biz-btn" data-id="${b.id}">Delete</button>
+          <div class="business-details">
+            ${b.description ? `<div class="business-desc">${esc(b.description)}</div>` : ''}
+            ${(b.tags||[]).length ? `<div style="margin-top:.4rem">${b.tags.map(t=>`<span class="tag">${esc(t)}</span>`).join('')}</div>` : ''}
+            ${meta.length ? `<div class="business-meta">${meta.join('<span class="sep"> · </span>')}</div>` : ''}
+            ${Object.keys(hours).length ? `<div class="hours-grid">${hoursRows}</div>` : ''}
+            ${closedMonths.length ? `<div class="closed-months-note">Closed in: ${closedMonths.map(m=>MONTH_NAMES[m-1]).join(', ')}</div>` : ''}
           </div>
         </div>`;
     }
