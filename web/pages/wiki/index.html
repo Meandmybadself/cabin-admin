@@ -88,11 +88,32 @@
           <div class="card" id="doc-list-card"><p class="muted">Loading…</p></div>
         </div>
         <div id="doc-detail-view" class="hidden">
-          <button class="btn btn-secondary" id="back-btn">← Back</button>
-          <div class="card mt1">
+          <div style="display:flex;gap:.5rem;align-items:center;margin-bottom:.75rem">
+            <button class="btn btn-secondary" id="back-btn">← Back</button>
+            <button class="btn btn-secondary" id="edit-btn" style="display:none">Edit</button>
+          </div>
+          <div class="card">
             <div id="doc-placeholder">Select a document from the list.</div>
-            <h2 id="doc-title" style="margin-bottom:.75rem;color:var(--green-dark);display:none"></h2>
-            <div class="doc-body" id="doc-body"></div>
+
+            <!-- Read view -->
+            <div id="doc-read-view">
+              <h2 id="doc-title" style="margin-bottom:.75rem;color:var(--green-dark);display:none"></h2>
+              <div class="doc-body" id="doc-body"></div>
+            </div>
+
+            <!-- Edit view -->
+            <div id="doc-edit-view" style="display:none">
+              <div style="display:flex;flex-direction:column;gap:.5rem;margin-bottom:.75rem">
+                <input type="text" id="edit-title" placeholder="Title" style="font-size:1.1rem;font-weight:600">
+                <input type="text" id="edit-category" placeholder="Category">
+              </div>
+              <textarea id="edit-body" style="width:100%;min-height:320px;font-family:monospace;font-size:.88rem;resize:vertical"></textarea>
+              <div style="display:flex;gap:.5rem;margin-top:.75rem">
+                <button class="btn btn-primary" id="save-btn">Save</button>
+                <button class="btn btn-secondary" id="cancel-edit-btn">Cancel</button>
+                <span id="edit-error" style="color:#721c24;font-size:.88rem;align-self:center;display:none"></span>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -156,15 +177,24 @@
       if (isWide()) document.getElementById('doc-detail-view').classList.remove('hidden');
     }
 
-    async function loadDoc(slug) {
-      const res = await fetch(`${CabinOS.API}/docs/${slug}`);
-      if (!res.ok) return;
-      const doc = await res.json();
+    let currentDoc = null;
+
+    function showReadView(doc) {
       document.getElementById('doc-placeholder').style.display = 'none';
+      document.getElementById('doc-edit-view').style.display = 'none';
+      document.getElementById('doc-read-view').style.display = '';
       const titleEl = document.getElementById('doc-title');
       titleEl.style.display = '';
       titleEl.textContent = doc.title;
       document.getElementById('doc-body').innerHTML = CabinOS.renderMarkdown(doc.body);
+      document.getElementById('edit-btn').style.display = '';
+    }
+
+    async function loadDoc(slug) {
+      const res = await fetch(`${CabinOS.API}/docs/${slug}`);
+      if (!res.ok) return;
+      currentDoc = await res.json();
+      showReadView(currentDoc);
       document.querySelectorAll('#doc-list-card a[data-slug]').forEach(a =>
         a.classList.toggle('active', a.dataset.slug === slug)
       );
@@ -177,6 +207,43 @@
     document.getElementById('back-btn').addEventListener('click', () => {
       document.getElementById('doc-detail-view').classList.add('hidden');
       document.getElementById('doc-list-view').classList.remove('hidden');
+    });
+
+    document.getElementById('edit-btn').addEventListener('click', () => {
+      document.getElementById('doc-read-view').style.display = 'none';
+      document.getElementById('doc-edit-view').style.display = '';
+      document.getElementById('edit-title').value = currentDoc.title;
+      document.getElementById('edit-category').value = currentDoc.category;
+      document.getElementById('edit-body').value = currentDoc.body;
+      document.getElementById('edit-error').style.display = 'none';
+    });
+
+    document.getElementById('cancel-edit-btn').addEventListener('click', () => {
+      showReadView(currentDoc);
+    });
+
+    document.getElementById('save-btn').addEventListener('click', async () => {
+      const errEl = document.getElementById('edit-error');
+      errEl.style.display = 'none';
+      const payload = {
+        slug: currentDoc.slug,
+        title: document.getElementById('edit-title').value.trim(),
+        category: document.getElementById('edit-category').value.trim(),
+        body: document.getElementById('edit-body').value,
+      };
+      const res = await CabinOS.apiFetch(`/docs/${currentDoc.id}`, {
+        method: 'PUT',
+        body: JSON.stringify(payload),
+      });
+      if (res.ok) {
+        currentDoc = await res.json();
+        showReadView(currentDoc);
+        await loadList();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        errEl.textContent = data.error || 'Save failed.';
+        errEl.style.display = '';
+      }
     });
 
     let videosLoaded = false;
