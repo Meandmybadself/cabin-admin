@@ -40,7 +40,12 @@
     }
 
     .tag { display:inline-block; padding:.15rem .55rem; border-radius:99px; font-size:.75rem; font-weight:600; background:var(--tan-dark); color:var(--text-muted); margin:.1rem .15rem 0 0; }
-    #filter-bar { display:flex; flex-wrap:wrap; gap:.4rem; margin-bottom:1rem; }
+    #filter-bar { display:flex; flex-direction:column; gap:.5rem; margin-bottom:1rem; }
+    #filter-search {
+      width:100%; padding:.55rem .75rem; border:1px solid var(--tan-dark);
+      border-radius:var(--radius); font-size:.95rem; background:#fff;
+    }
+    #filter-chips { display:flex; flex-wrap:wrap; gap:.4rem; }
     .filter-chip {
       padding:.3rem .75rem; border-radius:99px; border:1.5px solid var(--tan-dark);
       font-size:.82rem; font-weight:600; cursor:pointer; background:#fff; color:var(--text-muted);
@@ -94,7 +99,10 @@
       <h1 class="page-title" style="margin-bottom:0">Businesses</h1>
       <button class="btn btn-primary" id="add-btn">+ Add</button>
     </div>
-    <div id="filter-bar" style="display:none"></div>
+    <div id="filter-bar">
+      <input id="filter-search" type="search" placeholder="Search businesses…">
+      <div id="filter-chips"></div>
+    </div>
     <div id="business-list"><p class="muted">Loading…</p></div>
   </main>
 
@@ -217,22 +225,27 @@
     // ── Filter ──
     let activeFilter = null;
     let filterOpenNow = false;
-    function buildFilterBar(businesses) {
+    let searchQuery = '';
+
+    document.getElementById('filter-search').addEventListener('input', e => {
+      searchQuery = e.target.value.toLowerCase();
+      if (window._allBusinesses) renderList(window._allBusinesses);
+    });
+
+    function buildFilterChips(businesses) {
       const allTags = [...new Set(businesses.flatMap(b => b.tags || []))].sort();
-      const bar = document.getElementById('filter-bar');
-      if (!allTags.length) { bar.style.display = 'none'; return; }
-      bar.style.display = 'flex';
-      bar.innerHTML = '';
+      const chips = document.getElementById('filter-chips');
+      chips.innerHTML = '';
 
       const openChip = document.createElement('button');
       openChip.className = 'filter-chip' + (filterOpenNow ? ' active' : '');
       openChip.textContent = 'Open now';
       openChip.addEventListener('click', () => {
         filterOpenNow = !filterOpenNow;
-        buildFilterBar(businesses);
+        buildFilterChips(businesses);
         renderList(businesses);
       });
-      bar.appendChild(openChip);
+      chips.appendChild(openChip);
 
       allTags.forEach(tag => {
         const chip = document.createElement('button');
@@ -240,14 +253,20 @@
         chip.textContent = tag;
         chip.addEventListener('click', () => {
           activeFilter = activeFilter === tag ? null : tag;
-          buildFilterBar(businesses);
+          buildFilterChips(businesses);
           renderList(businesses);
         });
-        bar.appendChild(chip);
+        chips.appendChild(chip);
       });
     }
+
     function renderList(businesses) {
       let filtered = businesses;
+      if (searchQuery) filtered = filtered.filter(b =>
+        b.name.toLowerCase().includes(searchQuery) ||
+        (b.category || '').toLowerCase().includes(searchQuery) ||
+        (b.description || '').toLowerCase().includes(searchQuery)
+      );
       if (filterOpenNow) filtered = filtered.filter(b => isOpenNow(b.hours || {}, b.closed_months || []) === 'open');
       if (activeFilter)  filtered = filtered.filter(b => (b.tags || []).includes(activeFilter));
       const container = document.getElementById('business-list');
@@ -312,12 +331,12 @@
     async function load() {
       const res = await fetch(`${CabinOS.API}/businesses`);
       const businesses = await res.json();
+      window._allBusinesses = businesses;
       if (!businesses.length) {
-        document.getElementById('filter-bar').style.display = 'none';
         document.getElementById('business-list').innerHTML = '<p class="muted">No businesses yet. Tap + Add to get started.</p>';
         return;
       }
-      buildFilterBar(businesses);
+      buildFilterChips(businesses);
       renderList(businesses);
     }
 
