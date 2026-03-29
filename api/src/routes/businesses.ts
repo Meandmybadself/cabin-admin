@@ -13,6 +13,7 @@ interface Business {
   hours: string;         // JSON string in DB
   closed_months: string; // JSON string in DB
   tags: string;          // JSON string in DB
+  closures: string;      // JSON string in DB — specific closed dates ["YYYY-MM-DD",...]
   sort_order: number;
 }
 
@@ -37,10 +38,10 @@ export async function handleBusinesses(request: Request, env: Env, path: string)
   if (path === '/api/businesses' && method === 'POST') {
     const authErr = await requireAuth(request, env);
     if (authErr) return authErr;
-    const body = await request.json<Partial<Business> & { hours?: unknown; closed_months?: unknown; tags?: unknown }>();
+    const body = await request.json<Partial<Business> & { hours?: unknown; closed_months?: unknown; tags?: unknown; closures?: unknown }>();
     if (!body.id || !body.name) return json({ error: 'id and name required' }, 400);
     await dbRun(env.DB,
-      'INSERT INTO businesses (id, name, category, description, address, phone, website, hours, closed_months, tags, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      'INSERT INTO businesses (id, name, category, description, address, phone, website, hours, closed_months, tags, closures, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
       [
         body.id, body.name,
         body.category ?? '',
@@ -51,6 +52,7 @@ export async function handleBusinesses(request: Request, env: Env, path: string)
         typeof body.hours === 'string' ? body.hours : JSON.stringify(body.hours ?? {}),
         typeof body.closed_months === 'string' ? body.closed_months : JSON.stringify(body.closed_months ?? []),
         typeof body.tags === 'string' ? body.tags : JSON.stringify(body.tags ?? []),
+        typeof body.closures === 'string' ? body.closures : JSON.stringify(body.closures ?? []),
         body.sort_order ?? 0,
       ]
     );
@@ -62,10 +64,10 @@ export async function handleBusinesses(request: Request, env: Env, path: string)
     const authErr = await requireAuth(request, env);
     if (authErr) return authErr;
     const id = path.split('/')[3];
-    const body = await request.json<Partial<Business> & { hours?: unknown; closed_months?: unknown; tags?: unknown }>();
+    const body = await request.json<Partial<Business> & { hours?: unknown; closed_months?: unknown; tags?: unknown; closures?: unknown }>();
     if (!body.name) return json({ error: 'name required' }, 400);
     const result = await dbRun(env.DB,
-      'UPDATE businesses SET name=?, category=?, description=?, address=?, phone=?, website=?, hours=?, closed_months=?, tags=?, sort_order=? WHERE id=?',
+      'UPDATE businesses SET name=?, category=?, description=?, address=?, phone=?, website=?, hours=?, closed_months=?, tags=?, closures=?, sort_order=? WHERE id=?',
       [
         body.name,
         body.category ?? '',
@@ -76,6 +78,7 @@ export async function handleBusinesses(request: Request, env: Env, path: string)
         typeof body.hours === 'string' ? body.hours : JSON.stringify(body.hours ?? {}),
         typeof body.closed_months === 'string' ? body.closed_months : JSON.stringify(body.closed_months ?? []),
         typeof body.tags === 'string' ? body.tags : JSON.stringify(body.tags ?? []),
+        typeof body.closures === 'string' ? body.closures : JSON.stringify(body.closures ?? []),
         body.sort_order ?? 0,
         id,
       ]
@@ -116,5 +119,6 @@ function parse(row: Business) {
     hours: typeof row.hours === 'string' ? JSON.parse(row.hours || '{}') : row.hours,
     closed_months: typeof row.closed_months === 'string' ? JSON.parse(row.closed_months || '[]') : row.closed_months,
     tags: typeof row.tags === 'string' ? JSON.parse(row.tags || '[]') : (row.tags ?? []),
+    closures: typeof row.closures === 'string' ? JSON.parse(row.closures || '[]') : (row.closures ?? []),
   };
 }

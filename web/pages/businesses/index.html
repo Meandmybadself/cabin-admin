@@ -145,6 +145,13 @@
         <label style="display:block;font-size:.82rem;font-weight:600;margin-bottom:.4rem;color:var(--text-muted)">Closed months</label>
         <div class="months-grid" id="months-form"></div>
 
+        <label style="display:block;font-size:.82rem;font-weight:600;margin-bottom:.4rem;color:var(--text-muted)">Closure dates</label>
+        <div style="display:flex;gap:.5rem;align-items:center;margin-bottom:.5rem">
+          <input type="date" id="closure-date-input" style="flex:1">
+          <button type="button" class="btn btn-secondary" id="add-closure-btn">Add</button>
+        </div>
+        <div id="closure-list" style="display:flex;flex-wrap:wrap;gap:.35rem;margin-bottom:.75rem"></div>
+
         <p id="add-error" class="error hidden"></p>
         <div class="modal-actions">
           <button type="submit" class="btn btn-primary">Save</button>
@@ -174,8 +181,13 @@
       const h12 = h%12||12, ampm = h>=12?'pm':'am';
       return m===0 ? `${h12}${ampm}` : `${h12}:${String(m).padStart(2,'0')}${ampm}`;
     }
-    function isOpenNow(hours, closedMonths) {
+    function todayStr() {
+      const ct = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Chicago' }));
+      return `${ct.getFullYear()}-${String(ct.getMonth()+1).padStart(2,'0')}-${String(ct.getDate()).padStart(2,'0')}`;
+    }
+    function isOpenNow(hours, closedMonths, closures = []) {
       const now = nowCT();
+      if (closures.includes(todayStr())) return 'closed';
       if (closedMonths.includes(now.month)) return 'closed';
       const slot = hours[DAYS[now.dow]];
       if (!slot) return 'closed';
@@ -262,7 +274,7 @@
         (b.category || '').toLowerCase().includes(searchQuery) ||
         (b.description || '').toLowerCase().includes(searchQuery)
       );
-      if (filterOpenNow) filtered = filtered.filter(b => isOpenNow(b.hours || {}, b.closed_months || []) === 'open');
+      if (filterOpenNow) filtered = filtered.filter(b => isOpenNow(b.hours || {}, b.closed_months || [], b.closures || []) === 'open');
       if (activeFilter)  filtered = filtered.filter(b => (b.tags || []).includes(activeFilter));
       const container = document.getElementById('business-list');
       if (!filtered.length) { container.innerHTML = '<p class="muted">No businesses match.</p>'; return; }
@@ -303,9 +315,9 @@
     }
 
     function renderBusiness(b) {
-      const hours = b.hours || {}, closedMonths = b.closed_months || [];
-      const hasHoursData = Object.keys(hours).length || closedMonths.length;
-      const status = hasHoursData ? isOpenNow(hours, closedMonths) : null;
+      const hours = b.hours || {}, closedMonths = b.closed_months || [], closures = b.closures || [];
+      const hasHoursData = Object.keys(hours).length || closedMonths.length || closures.length;
+      const status = hasHoursData ? isOpenNow(hours, closedMonths, closures) : null;
       const now = nowCT();
 
       const meta = [];
@@ -318,7 +330,7 @@
           : `<span class="hours-day">${DAY_LABELS[i]}</span><span class="hours-time${isToday?' today':''}">Closed</span>`;
       }).join('');
 
-      const hasDetails = Object.keys(hours).length || closedMonths.length || b.description || b.address || (b.tags||[]).length;
+      const hasDetails = Object.keys(hours).length || closedMonths.length || closures.length || b.description || b.address || (b.tags||[]).length;
       const chevron = hasDetails
         ? `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4,6 8,10 12,6"/></svg>`
         : '';
@@ -344,6 +356,7 @@
           ${meta.length ? `<div class="business-meta" style="margin-bottom:.5rem">${meta.join('')}</div>` : ''}
           ${Object.keys(hours).length ? `<div class="hours-grid">${hoursRows}</div>` : ''}
           ${closedMonths.length ? `<div class="closed-months-note">Closed in: ${closedMonths.map(m=>MONTH_NAMES[m-1]).join(', ')}</div>` : ''}
+          ${closures.length ? `<div class="closed-months-note">Closed dates: ${closures.sort().join(', ')}</div>` : ''}
         </td></tr>` : ''}`;
     }
 
@@ -391,6 +404,24 @@
     function readClosedMonths() { return Array.from(document.querySelectorAll('.month-chip.selected')).map(c=>Number(c.dataset.month)); }
     function resetMonths() { document.querySelectorAll('.month-chip').forEach(c=>c.classList.remove('selected')); }
 
+    // ── Closures ──
+    let currentClosures = [];
+    function renderClosureList() {
+      const el = document.getElementById('closure-list');
+      el.innerHTML = currentClosures.sort().map(d =>
+        `<span class="tag-pill">${esc(d)}<button type="button" data-date="${esc(d)}">×</button></span>`
+      ).join('');
+      el.querySelectorAll('button[data-date]').forEach(btn =>
+        btn.addEventListener('click', () => { currentClosures = currentClosures.filter(d => d !== btn.dataset.date); renderClosureList(); })
+      );
+    }
+    document.getElementById('add-closure-btn').addEventListener('click', () => {
+      const val = document.getElementById('closure-date-input').value;
+      if (val && !currentClosures.includes(val)) { currentClosures.push(val); renderClosureList(); }
+      document.getElementById('closure-date-input').value = '';
+    });
+    function resetClosures() { currentClosures = []; renderClosureList(); }
+
     // ── Modal open/close ──
     let editingId = null;
 
@@ -400,6 +431,7 @@
       document.getElementById('add-business-form').reset();
       resetHours();
       resetMonths();
+      resetClosures();
       currentTags = [];
       renderTagPills();
       document.getElementById('add-error').classList.add('hidden');
@@ -425,6 +457,8 @@
         });
         currentTags = [...(b.tags || [])];
         renderTagPills();
+        currentClosures = [...(b.closures || [])];
+        renderClosureList();
       }
 
       document.getElementById('add-modal').classList.remove('hidden');
@@ -434,6 +468,7 @@
       document.getElementById('add-modal').classList.add('hidden');
       editingId = null;
       currentTags = [];
+      currentClosures = [];
     }
 
     document.getElementById('add-btn').addEventListener('click', () => openModal());
@@ -461,6 +496,7 @@
         hours: readHours(),
         closed_months: readClosedMonths(),
         tags: [...currentTags],
+        closures: [...currentClosures],
         sort_order: 0,
       };
       const res = editingId
