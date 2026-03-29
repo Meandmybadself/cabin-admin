@@ -238,7 +238,7 @@
 
     // ── Filter ──
     let activeFilter = null;
-    let filterOpenNow = false;
+    let filterOpenNow = localStorage.getItem('biz_open_now') === 'true';
     let searchQuery = '';
 
     document.getElementById('filter-search').addEventListener('input', e => {
@@ -256,6 +256,7 @@
       openChip.textContent = 'Open now';
       openChip.addEventListener('click', () => {
         filterOpenNow = !filterOpenNow;
+        localStorage.setItem('biz_open_now', filterOpenNow);
         buildFilterChips(businesses);
         renderList(businesses);
       });
