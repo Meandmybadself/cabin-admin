@@ -332,8 +332,7 @@
             <button class="business-expand-btn expand-btn" data-id="${b.id}" style="flex:1;text-align:left;gap:.5rem">
               <div style="flex:1">
                 <div class="business-name">${esc(b.name)}</div>
-                ${b.category ? `<div class="business-category">${esc(b.category)}</div>` : ''}
-              </div>
+                </div>
               <div style="display:flex;align-items:center;gap:.5rem;flex-shrink:0">
                 ${badgeText ? `<span class="open-badge ${status}">${badgeText}</span>` : ''}
                 ${hasDetails ? `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4,6 8,10 12,6"/></svg>` : ''}
