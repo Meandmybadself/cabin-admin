@@ -5,6 +5,7 @@ import { handlePhotos } from './routes/photos';
 import { handlePhotoCategories } from './routes/photo-categories';
 import { handleVideos } from './routes/videos';
 import { handleBusinesses } from './routes/businesses';
+import { handleAppliances } from './routes/appliances';
 import { validateBasicAuth } from './middleware/auth';
 
 export interface Env {
@@ -56,6 +57,8 @@ export default {
           response = await handleVideos(request, env, path);
         } else if (path.startsWith('/api/businesses')) {
           response = await handleBusinesses(request, env, path);
+        } else if (path.startsWith('/api/appliances')) {
+          response = await handleAppliances(request, env, path);
         } else {
           response = json({ error: 'Not found' }, 404);
         }

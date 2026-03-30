@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Appliances — Cabin OS</title>
+  <link rel="stylesheet" href="/assets/style.css">
+  <style>
+    .app-table { width:100%; border-collapse:collapse; background:#fff; border-radius:var(--radius); box-shadow:var(--shadow); overflow:hidden; }
+    .app-table thead th { padding:.6rem .75rem; text-align:left; font-size:.78rem; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:.05em; border-bottom:2px solid var(--tan-dark); white-space:nowrap; }
+    .app-table .app-row { cursor:pointer; border-top:1px solid var(--tan-dark); }
+    .app-table .app-row:hover { background:var(--tan); }
+    .app-table .app-row td { padding:.65rem .75rem; font-size:.9rem; vertical-align:middle; }
+    .app-table .detail-row td { padding:.75rem 1rem .75rem 2.25rem; border-top:none; background:#fafaf8; }
+    .app-table .detail-row { display:none; }
+    .app-table .detail-row.open { display:table-row; }
+    .app-name-cell { display:flex; align-items:center; gap:.5rem; font-weight:600; color:var(--green-dark); }
+    .app-name-cell svg { flex-shrink:0; color:var(--text-muted); transition:transform .2s; }
+    .app-row.expanded .app-name-cell svg { transform:rotate(180deg); }
+    .app-model { font-size:.85rem; color:var(--text-muted); }
+    .app-icon-btn { background:none; border:none; cursor:pointer; padding:.3rem; line-height:1; color:var(--text-muted); border-radius:var(--radius); }
+    .app-icon-btn:hover { background:var(--tan-dark); }
+    .app-icon-btn.delete:hover { background:#f8d7da; color:#721c24; }
+
+    .events-list { margin-top:.5rem; }
+    .event-row { display:flex; align-items:flex-start; gap:.75rem; padding:.4rem 0; border-bottom:1px solid var(--tan-dark); font-size:.85rem; }
+    .event-row:last-child { border-bottom:none; }
+    .event-date { color:var(--text-muted); white-space:nowrap; min-width:6.5rem; }
+    .event-desc { flex:1; color:var(--text); }
+    .event-delete-btn { background:none; border:none; cursor:pointer; color:var(--text-muted); padding:.1rem .3rem; border-radius:var(--radius); line-height:1; font-size:.9rem; }
+    .event-delete-btn:hover { background:#f8d7da; color:#721c24; }
+    .add-event-row { display:flex; gap:.4rem; margin-top:.6rem; align-items:center; }
+    .add-event-row input[type=date] { width:9rem; }
+    .add-event-row input[type=text] { flex:1; }
+
+    .modal-card {
+      background:#fff; border-radius:var(--radius);
+      box-shadow:0 8px 32px rgba(0,0,0,.2);
+      width:100%; max-width:480px;
+      padding:1.5rem;
+    }
+    .modal-card h2 { margin-bottom:1rem; color:var(--green-dark); }
+    .modal-card .form-row { margin-bottom:.6rem; }
+    .modal-card label { display:block; font-size:.82rem; font-weight:600; margin-bottom:.25rem; color:var(--text-muted); }
+    .modal-actions { display:flex; gap:.5rem; margin-top:1rem; }
+  </style>
+</head>
+<body>
+  <nav id="nav">
+    <a href="/" class="nav-brand">Cabin OS</a>
+    <div class="nav-links">
+      <a href="/pages/wiki/">Wiki</a>
+      <a href="/pages/shutdown/">Shutdown</a>
+      <a href="/pages/photos/">Photos</a>
+      <a href="/pages/contacts/">Contacts</a>
+      <a href="/pages/businesses/">Businesses</a>
+      <a href="/pages/appliances/">Appliances</a>
+      <a href="/pages/settings/">Settings</a>
+    </div>
+  </nav>
+  <main>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem">
+      <h1 class="page-title" style="margin-bottom:0">Appliances</h1>
+      <button class="btn btn-primary" id="add-btn">+ Add</button>
+    </div>
+    <div id="appliance-list"><p class="muted">Loading…</p></div>
+  </main>
+
+  <!-- Add/edit modal -->
+  <div id="add-modal" class="modal hidden" role="dialog" aria-modal="true">
+    <div class="modal-card">
+      <h2 id="modal-title">Add appliance</h2>
+      <form id="add-form" autocomplete="off">
+        <div class="form-row">
+          <label>Name *</label>
+          <input type="text" id="app-name" required data-1p-ignore autocomplete="off">
+        </div>
+        <div class="form-row">
+          <label>Model</label>
+          <input type="text" id="app-model" placeholder="Make / model number" data-1p-ignore autocomplete="off">
+        </div>
+        <div class="form-row">
+          <label>Notes</label>
+          <textarea id="app-notes" style="min-height:80px"></textarea>
+        </div>
+        <p id="add-error" class="error hidden"></p>
+        <div class="modal-actions">
+          <button type="submit" class="btn btn-primary">Save</button>
+          <button type="button" class="btn btn-secondary" id="cancel-btn">Cancel</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="/assets/app.js" type="module"></script>
+  <script type="module">
+    function esc(s) { return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+    let allAppliances = [];
+
+    function renderEvents(appliance) {
+      const events = appliance.events || [];
+      const rows = events.map(ev => `
+        <div class="event-row" data-event-id="${esc(ev.id)}">
+          <span class="event-date">${esc(ev.date)}</span>
+          <span class="event-desc">${esc(ev.description)}</span>
+          <button class="event-delete-btn" data-event-id="${esc(ev.id)}" data-appliance-id="${esc(appliance.id)}" title="Delete event">×</button>
+        </div>`).join('');
+      return `
+        ${appliance.notes ? `<div style="font-size:.88rem;color:var(--text-muted);margin-bottom:.5rem">${esc(appliance.notes)}</div>` : ''}
+        ${appliance.model ? `<div style="font-size:.82rem;color:var(--text-muted);margin-bottom:.5rem">Model: ${esc(appliance.model)}</div>` : ''}
+        <div class="events-list">${rows || '<div style="font-size:.85rem;color:var(--text-muted)">No events yet.</div>'}</div>
+        <div class="add-event-row">
+          <input type="date" class="new-event-date" data-id="${esc(appliance.id)}" data-1p-ignore autocomplete="off">
+          <input type="text" class="new-event-desc" placeholder="Description" data-id="${esc(appliance.id)}" data-1p-ignore autocomplete="off">
+          <button type="button" class="btn btn-secondary add-event-btn" data-id="${esc(appliance.id)}" style="white-space:nowrap">+ Log</button>
+        </div>`;
+    }
+
+    function renderList() {
+      const container = document.getElementById('appliance-list');
+      if (!allAppliances.length) {
+        container.innerHTML = '<p class="muted">No appliances yet. Tap + Add to get started.</p>';
+        return;
+      }
+      const rows = allAppliances.map(a => `
+        <tr class="app-row" data-id="${esc(a.id)}">
+          <td><div class="app-name-cell">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4,6 8,10 12,6"/></svg>
+            ${esc(a.name)}
+          </div></td>
+          <td class="app-model">${esc(a.model)}</td>
+          <td style="white-space:nowrap">
+            <button class="app-icon-btn edit-app-btn" data-id="${esc(a.id)}" title="Edit">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+            </button>
+            <button class="app-icon-btn delete delete-app-btn" data-id="${esc(a.id)}" title="Delete">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+            </button>
+          </td>
+        </tr>
+        <tr class="detail-row" data-id="${esc(a.id)}">
+          <td colspan="3">${renderEvents(a)}</td>
+        </tr>`).join('');
+
+      container.innerHTML = `
+        <table class="app-table">
+          <thead><tr><th>Name</th><th>Model</th><th></th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>`;
+
+      container.querySelectorAll('.app-row').forEach(row => {
+        row.addEventListener('click', e => {
+          if (e.target.closest('.app-icon-btn')) return;
+          const detail = container.querySelector(`.detail-row[data-id="${row.dataset.id}"]`);
+          row.classList.toggle('expanded');
+          detail?.classList.toggle('open');
+        });
+      });
+
+      container.querySelectorAll('.delete-app-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          if (!confirm('Delete this appliance and all its events?')) return;
+          await CabinOS.apiFetch(`/appliances/${btn.dataset.id}`, { method: 'DELETE' });
+          load();
+        });
+      });
+
+      container.querySelectorAll('.edit-app-btn').forEach(btn => {
+        btn.addEventListener('click', () => openModal(btn.dataset.id));
+      });
+
+      container.querySelectorAll('.add-event-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const id = btn.dataset.id;
+          const dateInput = container.querySelector(`.new-event-date[data-id="${id}"]`);
+          const descInput = container.querySelector(`.new-event-desc[data-id="${id}"]`);
+          const date = dateInput.value.trim();
+          const description = descInput.value.trim();
+          if (!date || !description) return;
+          const res = await CabinOS.apiFetch(`/appliances/${id}/events`, {
+            method: 'POST',
+            body: JSON.stringify({ id: CabinOS.ulid(), date, description }),
+          });
+          if (res.ok) { load(); }
+        });
+      });
+
+      container.querySelectorAll('.event-delete-btn').forEach(btn => {
+        btn.addEventListener('click', async e => {
+          e.stopPropagation();
+          const appId = btn.dataset.applianceId;
+          const evId = btn.dataset.eventId;
+          await CabinOS.apiFetch(`/appliances/${appId}/events/${evId}`, { method: 'DELETE' });
+          load();
+        });
+      });
+    }
+
+    async function load() {
+      const res = await fetch(`${CabinOS.API}/appliances`);
+      allAppliances = await res.json();
+      renderList();
+    }
+
+    // ── Modal ──
+    let editingId = null;
+
+    async function openModal(id = null) {
+      editingId = id;
+      document.getElementById('modal-title').textContent = id ? 'Edit appliance' : 'Add appliance';
+      document.getElementById('add-form').reset();
+      document.getElementById('add-error').classList.add('hidden');
+      if (id) {
+        const a = allAppliances.find(x => x.id === id);
+        if (a) {
+          document.getElementById('app-name').value  = a.name || '';
+          document.getElementById('app-model').value = a.model || '';
+          document.getElementById('app-notes').value = a.notes || '';
+        }
+      }
+      document.getElementById('add-modal').classList.remove('hidden');
+    }
+
+    function closeModal() {
+      document.getElementById('add-modal').classList.add('hidden');
+      editingId = null;
+    }
+
+    document.getElementById('add-btn').addEventListener('click', () => openModal());
+    document.getElementById('cancel-btn').addEventListener('click', closeModal);
+    document.getElementById('add-modal').addEventListener('click', e => {
+      if (e.target === document.getElementById('add-modal')) closeModal();
+    });
+
+    document.getElementById('add-form').addEventListener('submit', async e => {
+      e.preventDefault();
+      const errEl = document.getElementById('add-error');
+      errEl.classList.add('hidden');
+      const payload = {
+        name:  document.getElementById('app-name').value.trim(),
+        model: document.getElementById('app-model').value.trim(),
+        notes: document.getElementById('app-notes').value.trim(),
+        sort_order: 0,
+      };
+      const res = editingId
+        ? await CabinOS.apiFetch(`/appliances/${editingId}`, { method: 'PUT', body: JSON.stringify(payload) })
+        : await CabinOS.apiFetch('/appliances', { method: 'POST', body: JSON.stringify({ id: CabinOS.ulid(), ...payload }) });
+      if (res.ok) {
+        closeModal();
+        load();
+      } else {
+        const body = await res.json().catch(() => ({}));
+        errEl.textContent = body.error || 'Save failed.';
+        errEl.classList.remove('hidden');
+      }
+    });
+
+    load();
+  </script>
+</body>
+</html>
