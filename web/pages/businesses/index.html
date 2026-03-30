@@ -187,11 +187,32 @@
     }
     function isOpenNow(hours, closedMonths, closures = []) {
       const now = nowCT();
-      if (closures.includes(todayStr())) return 'closed';
-      if (closedMonths.includes(now.month)) return 'closed';
-      const slot = hours[DAYS[now.dow]];
-      if (!slot) return 'closed';
-      return now.minuteOfDay >= parseTime(slot.open) && now.minuteOfDay < parseTime(slot.close) ? 'open' : 'closed';
+
+      if (closures.includes(todayStr()))
+        return { status: 'closed', label: 'Closed today' };
+
+      if (closedMonths.includes(now.month))
+        return { status: 'closed', label: `Closed for ${MONTH_NAMES[now.month - 1]}` };
+
+      const todaySlot = hours[DAYS[now.dow]];
+      if (todaySlot) {
+        const openMins  = parseTime(todaySlot.open);
+        const closeMins = parseTime(todaySlot.close);
+        if (now.minuteOfDay >= openMins && now.minuteOfDay < closeMins)
+          return { status: 'open', label: 'Open' };
+        if (now.minuteOfDay < openMins)
+          return { status: 'closed', label: `Closed until ${fmt12(todaySlot.open)}` };
+      }
+
+      // Find next open day
+      for (let i = 1; i <= 7; i++) {
+        const nextDow = (now.dow + i) % 7;
+        const slot = hours[DAYS[nextDow]];
+        if (slot)
+          return { status: 'closed', label: `Closed until ${DAY_LABELS[nextDow].slice(0, 3)} ${fmt12(slot.open)}` };
+      }
+
+      return { status: 'closed', label: 'Closed' };
     }
     function mapsUrl(a) { return 'https://maps.google.com/?q=' + encodeURIComponent(a); }
     function esc(s) { return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
@@ -274,7 +295,7 @@
         (b.category || '').toLowerCase().includes(searchQuery) ||
         (b.description || '').toLowerCase().includes(searchQuery)
       );
-      if (filterOpenNow) filtered = filtered.filter(b => isOpenNow(b.hours || {}, b.closed_months || [], b.closures || []) === 'open');
+      if (filterOpenNow) filtered = filtered.filter(b => isOpenNow(b.hours || {}, b.closed_months || [], b.closures || []).status === 'open');
       if (activeFilter)  filtered = filtered.filter(b => (b.tags || []).includes(activeFilter));
       const container = document.getElementById('business-list');
       if (!filtered.length) { container.innerHTML = '<p class="muted">No businesses match.</p>'; return; }
@@ -317,7 +338,7 @@
     function renderBusiness(b) {
       const hours = b.hours || {}, closedMonths = b.closed_months || [], closures = b.closures || [];
       const hasHoursData = Object.keys(hours).length || closedMonths.length || closures.length;
-      const status = hasHoursData ? isOpenNow(hours, closedMonths, closures) : null;
+      const openStatus = hasHoursData ? isOpenNow(hours, closedMonths, closures) : null;
       const now = nowCT();
 
       const meta = [];
@@ -338,7 +359,7 @@
       return `
         <tr class="biz-row" data-id="${b.id}">
           <td><div class="biz-name-cell">${chevron}${esc(b.name)}</div></td>
-          <td>${status ? `<span class="open-badge ${status}">${status === 'open' ? 'Open' : 'Closed'}</span>` : ''}</td>
+          <td>${openStatus ? `<span class="open-badge ${openStatus.status}">${esc(openStatus.label)}</span>` : ''}</td>
           <td>${b.phone ? `<a href="tel:${esc(b.phone)}" onclick="event.stopPropagation()">${esc(b.phone)}</a>` : ''}</td>
           <td>${b.website ? `<a href="${esc(b.website)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">Website</a>` : ''}</td>
           <td style="white-space:nowrap">
