@@ -8,6 +8,7 @@ interface ChecklistItem {
   section: string;
   sort_order: number;
   photo_prompt: string | null;
+  checklist_id: string;
 }
 
 interface ChecklistSession {
@@ -16,14 +17,16 @@ interface ChecklistSession {
   completed_at: number | null;
   checked_ids: string[];
   notes: string | null;
+  checklist_id: string;
 }
 
 interface ChecklistSessionRow {
   id: string;
   started_at: number;
   completed_at: number | null;
-  checked_ids: string; // JSON string in DB
+  checked_ids: string;
   notes: string | null;
+  checklist_id: string;
 }
 
 function parseSession(row: ChecklistSessionRow): ChecklistSession {
@@ -32,11 +35,15 @@ function parseSession(row: ChecklistSessionRow): ChecklistSession {
 
 export async function handleChecklist(request: Request, env: Env, path: string): Promise<Response> {
   const method = request.method;
+  const url = new URL(request.url);
 
   // --- Items ---
 
   if (path === '/api/checklist/items' && method === 'GET') {
-    const items = await dbAll<ChecklistItem>(env.DB, 'SELECT * FROM checklist_items ORDER BY sort_order');
+    const checklistId = url.searchParams.get('checklist_id');
+    const items = checklistId
+      ? await dbAll<ChecklistItem>(env.DB, 'SELECT * FROM checklist_items WHERE checklist_id = ? ORDER BY sort_order', [checklistId])
+      : await dbAll<ChecklistItem>(env.DB, 'SELECT * FROM checklist_items ORDER BY sort_order');
     return json(items);
   }
 
@@ -46,8 +53,8 @@ export async function handleChecklist(request: Request, env: Env, path: string):
     const body = await request.json<Partial<ChecklistItem>>();
     if (!body.id || !body.label) return json({ error: 'id and label required' }, 400);
     await dbRun(env.DB,
-      'INSERT INTO checklist_items (id, label, section, sort_order, photo_prompt) VALUES (?, ?, ?, ?, ?)',
-      [body.id, body.label, body.section ?? '', body.sort_order ?? 0, body.photo_prompt ?? null]
+      'INSERT INTO checklist_items (id, label, section, sort_order, photo_prompt, checklist_id) VALUES (?, ?, ?, ?, ?, ?)',
+      [body.id, body.label, body.section ?? '', body.sort_order ?? 0, body.photo_prompt ?? null, body.checklist_id ?? 'shutdown']
     );
     const created = await dbFirst<ChecklistItem>(env.DB, 'SELECT * FROM checklist_items WHERE id = ?', [body.id]);
     return json(created, 201);
@@ -91,15 +98,19 @@ export async function handleChecklist(request: Request, env: Env, path: string):
   // --- Sessions ---
 
   if (path === '/api/checklist/sessions' && method === 'GET') {
-    const rows = await dbAll<ChecklistSessionRow>(
-      env.DB, 'SELECT * FROM checklist_sessions ORDER BY started_at DESC'
-    );
+    const checklistId = url.searchParams.get('checklist_id');
+    const rows = checklistId
+      ? await dbAll<ChecklistSessionRow>(env.DB, 'SELECT * FROM checklist_sessions WHERE checklist_id = ? ORDER BY started_at DESC', [checklistId])
+      : await dbAll<ChecklistSessionRow>(env.DB, 'SELECT * FROM checklist_sessions ORDER BY started_at DESC');
     return json(rows.map(parseSession));
   }
 
   if (path === '/api/checklist/sessions/active' && method === 'GET') {
+    const checklistId = url.searchParams.get('checklist_id') ?? 'shutdown';
     const row = await dbFirst<ChecklistSessionRow>(
-      env.DB, 'SELECT * FROM checklist_sessions WHERE completed_at IS NULL ORDER BY started_at DESC LIMIT 1'
+      env.DB,
+      'SELECT * FROM checklist_sessions WHERE completed_at IS NULL AND checklist_id = ? ORDER BY started_at DESC LIMIT 1',
+      [checklistId]
     );
     return json(row ? parseSession(row) : null);
   }
@@ -107,13 +118,14 @@ export async function handleChecklist(request: Request, env: Env, path: string):
   if (path === '/api/checklist/sessions' && method === 'POST') {
     const authErr = await requireAuth(request, env);
     if (authErr) return authErr;
-    const body = await request.json<{ id?: string; started_at?: number }>();
+    const body = await request.json<{ id?: string; started_at?: number; checklist_id?: string }>();
     if (!body.id || !body.started_at) return json({ error: 'id and started_at required' }, 400);
+    const checklistId = body.checklist_id ?? 'shutdown';
     await dbRun(env.DB,
-      'INSERT INTO checklist_sessions (id, started_at, checked_ids) VALUES (?, ?, ?)',
-      [body.id, body.started_at, '[]']
+      'INSERT INTO checklist_sessions (id, started_at, checked_ids, checklist_id) VALUES (?, ?, ?, ?)',
+      [body.id, body.started_at, '[]', checklistId]
     );
-    return json({ id: body.id, started_at: body.started_at, checked_ids: [], completed_at: null }, 201);
+    return json({ id: body.id, started_at: body.started_at, checked_ids: [], completed_at: null, checklist_id: checklistId }, 201);
   }
 
   if (path.match(/^\/api\/checklist\/sessions\/[^/]+\/complete$/) && method === 'POST') {

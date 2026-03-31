@@ -11,7 +11,7 @@
     <a href="/" class="nav-brand">Cabin OS</a>
     <div class="nav-links">
       <a href="/pages/wiki/">Wiki</a>
-      <a href="/pages/shutdown/">Shutdown</a>
+      <a href="/pages/checklists/">Checklists</a>
       <a href="/pages/photos/">Photos</a>
       <a href="/pages/contacts/">Contacts</a>
       <a href="/pages/businesses/">Businesses</a>
@@ -45,17 +45,7 @@
       </form>
     </div>
 
-    <!-- Checklist items -->
-    <div class="section-label">Checklist items</div>
-    <div class="card">
-      <ul id="checklist-items-list" class="contact-list"></ul>
-      <form id="add-item-form" style="display:flex;gap:.5rem;margin-top:1rem;flex-wrap:wrap">
-        <input type="text" id="new-item-label" placeholder="Item label" required style="flex:2;min-width:140px">
-        <input type="text" id="new-item-section" placeholder="Section" required style="flex:1;min-width:120px">
-        <input type="text" id="new-item-photo-prompt" placeholder="Photo prompt (optional — makes it a photo step)" style="flex:3;min-width:200px">
-        <button type="submit" class="btn btn-primary">Add</button>
-      </form>
-    </div>
+    <!-- Checklist items are managed from the Checklists page -->
 
   </main>
 
@@ -136,48 +126,9 @@
       if (res.ok) { document.getElementById('new-category-label').value = ''; loadCategories(); }
     });
 
-    // ── Checklist items ──
-    async function loadChecklistItems() {
-      const res = await fetch(`${CabinOS.API}/checklist/items`);
-      const items = await res.json();
-      const list = document.getElementById('checklist-items-list');
-      list.innerHTML = items.map(i => `
-        <li class="contact-item">
-          <div class="contact-info">
-            <div class="contact-name">${esc(i.label)}</div>
-            <div class="contact-role">${esc(i.section)}${i.photo_prompt ? ' · 📷 ' + esc(i.photo_prompt) : ''}</div>
-          </div>
-          <button class="btn btn-danger" data-delete-item="${i.id}" style="padding:.35rem .65rem;font-size:.8rem">Delete</button>
-        </li>`).join('') || '<li class="muted">No items.</li>';
-      list.querySelectorAll('[data-delete-item]').forEach(btn => {
-        btn.addEventListener('click', async () => {
-          if (!confirm('Delete this checklist item?')) return;
-          await CabinOS.apiFetch(`/checklist/items/${btn.dataset.deleteItem}`, { method: 'DELETE' });
-          loadChecklistItems();
-        });
-      });
-    }
-
-    document.getElementById('add-item-form').addEventListener('submit', async e => {
-      e.preventDefault();
-      if (!requireAuth()) return;
-      const photoPrompt = document.getElementById('new-item-photo-prompt').value.trim();
-      const res = await CabinOS.apiFetch('/checklist/items', {
-        method: 'POST',
-        body: JSON.stringify({
-          id: CabinOS.ulid(),
-          label: document.getElementById('new-item-label').value.trim(),
-          section: document.getElementById('new-item-section').value.trim(),
-          photo_prompt: photoPrompt || null,
-          sort_order: 999,
-        }),
-      });
-      if (res.ok) { e.target.reset(); loadChecklistItems(); }
-    });
 
     loadVideos();
     loadCategories();
-    loadChecklistItems();
   </script>
 </body>
 </html>

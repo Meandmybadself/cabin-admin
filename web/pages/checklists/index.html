@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Checklists — Cabin OS</title>
+  <link rel="stylesheet" href="/assets/style.css">
+  <style>
+    /* ── List view ── */
+    .cl-card { display:flex; align-items:center; gap:.75rem; padding:.75rem; border-top:1px solid var(--tan-dark); }
+    .cl-card:first-child { border-top:none; }
+    .cl-card-info { flex:1; }
+    .cl-card-name { font-weight:600; color:var(--green-dark); }
+    .cl-card-meta { font-size:.8rem; color:var(--text-muted); }
+    .cl-card-actions { display:flex; gap:.35rem; align-items:center; }
+    .icon-btn { background:none; border:none; cursor:pointer; padding:.3rem; line-height:1; color:var(--text-muted); border-radius:var(--radius); }
+    .icon-btn:hover { background:var(--tan-dark); }
+    .icon-btn.danger:hover { background:#f8d7da; color:#721c24; }
+
+    /* ── Edit view ── */
+    .edit-header { display:flex; align-items:center; gap:.75rem; margin-bottom:1rem; }
+    .edit-title-input { font-size:1.25rem; font-weight:700; color:var(--green-dark); border:none; border-bottom:2px solid var(--tan-dark); background:transparent; padding:.1rem .25rem; flex:1; }
+    .edit-title-input:focus { outline:none; border-bottom-color:var(--green-mid); }
+    .edit-section-label { font-size:.75rem; font-weight:700; color:var(--green-light); text-transform:uppercase; letter-spacing:.05em; padding:.4rem .75rem; background:var(--tan); border-top:1px solid var(--tan-dark); }
+    .edit-item { display:flex; align-items:center; gap:.5rem; padding:.55rem .75rem; border-top:1px solid var(--tan-dark); font-size:.9rem; }
+    .edit-item-label { flex:1; }
+    .edit-item-photo { font-size:.75rem; color:var(--text-muted); margin-left:.25rem; }
+    .add-item-form { display:flex; flex-direction:column; gap:.4rem; padding:.75rem; border-top:2px solid var(--tan-dark); }
+    .add-item-row { display:flex; gap:.4rem; }
+    .add-item-row input { flex:1; }
+
+    /* ── Run view ── */
+    .run-header { display:flex; align-items:center; gap:.75rem; margin-bottom:1rem; }
+    .run-title { font-size:1.1rem; font-weight:700; color:var(--green-dark); flex:1; }
+    .photo-item .checklist-label { display:flex; align-items:center; gap:.4rem; }
+    .photo-item .camera-icon { color:var(--green-mid); flex-shrink:0; }
+    .photo-item .photo-prompt-text { font-size:.82rem; color:var(--text-muted); margin:.15rem 0 .4rem 1.6rem; }
+    .photo-upload-label {
+      display:inline-flex; align-items:center; gap:.35rem;
+      padding:.3rem .7rem; border-radius:var(--radius);
+      border:1.5px solid var(--green-mid); color:var(--green-mid);
+      font-size:.82rem; font-weight:600; cursor:pointer; margin-left:1.6rem; background:#fff;
+    }
+    .photo-upload-label:hover { background:var(--tan); }
+    .photo-upload-label.uploading { opacity:.6; pointer-events:none; }
+    .photo-taken-badge { display:inline-flex; align-items:center; gap:.3rem; margin-left:1.6rem; font-size:.82rem; font-weight:600; color:#155724; }
+    .photo-thumb { display:block; width:80px; height:60px; object-fit:cover; border-radius:4px; margin:.4rem 0 .25rem 1.6rem; border:1px solid var(--tan-dark); }
+
+    /* ── Shared ── */
+    .back-btn { display:inline-flex; align-items:center; gap:.3rem; font-size:.85rem; color:var(--text-muted); background:none; border:none; cursor:pointer; padding:.2rem 0; }
+    .back-btn:hover { color:var(--green-dark); }
+
+    /* ── Add checklist modal ── */
+    .modal-card { background:#fff; border-radius:var(--radius); box-shadow:0 8px 32px rgba(0,0,0,.2); width:100%; max-width:380px; padding:1.5rem; }
+    .modal-card h2 { margin-bottom:1rem; color:var(--green-dark); }
+    .modal-card .form-row { margin-bottom:.6rem; }
+    .modal-card label { display:block; font-size:.82rem; font-weight:600; margin-bottom:.25rem; color:var(--text-muted); }
+    .modal-actions { display:flex; gap:.5rem; margin-top:1rem; }
+  </style>
+</head>
+<body>
+  <nav id="nav">
+    <a href="/" class="nav-brand">Cabin OS</a>
+    <div class="nav-links">
+      <a href="/pages/wiki/">Wiki</a>
+      <a href="/pages/checklists/">Checklists</a>
+      <a href="/pages/photos/">Photos</a>
+      <a href="/pages/contacts/">Contacts</a>
+      <a href="/pages/businesses/">Businesses</a>
+      <a href="/pages/appliances/">Appliances</a>
+      <a href="/pages/settings/">Settings</a>
+    </div>
+  </nav>
+  <main>
+
+    <!-- List view -->
+    <div id="list-view">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem">
+        <h1 class="page-title" style="margin-bottom:0">Checklists</h1>
+        <button class="btn btn-primary" id="add-checklist-btn">+ Add</button>
+      </div>
+      <div class="card" style="padding:0">
+        <div id="cl-list"><p class="muted" style="padding:.75rem">Loading…</p></div>
+      </div>
+    </div>
+
+    <!-- Edit view -->
+    <div id="edit-view" class="hidden">
+      <button class="back-btn" id="edit-back-btn">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><polyline points="10,4 6,8 10,12"/></svg>
+        Checklists
+      </button>
+      <div class="edit-header" style="margin-top:.5rem">
+        <input type="text" class="edit-title-input" id="edit-title-input" data-1p-ignore autocomplete="off">
+      </div>
+      <div class="card" style="padding:0" id="edit-items-card">
+        <div id="edit-items"></div>
+        <form class="add-item-form" id="add-item-form" autocomplete="off">
+          <div class="add-item-row">
+            <input type="text" id="new-label" placeholder="Item label" required data-1p-ignore autocomplete="off">
+            <input type="text" id="new-section" placeholder="Section" required data-1p-ignore autocomplete="off" list="section-datalist">
+            <datalist id="section-datalist"></datalist>
+          </div>
+          <input type="text" id="new-photo-prompt" placeholder="Photo prompt (optional — makes it a photo step)" data-1p-ignore autocomplete="off">
+          <button type="submit" class="btn btn-primary" style="align-self:flex-start">+ Add item</button>
+        </form>
+      </div>
+    </div>
+
+    <!-- Run view -->
+    <div id="run-view" class="hidden">
+      <div class="run-header">
+        <button class="back-btn" id="run-back-btn">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><polyline points="10,4 6,8 10,12"/></svg>
+          Checklists
+        </button>
+        <span class="run-title" id="run-title"></span>
+      </div>
+      <div class="progress-bar">
+        <div class="progress-bar-fill" id="progress-fill" style="width:0%"></div>
+      </div>
+      <p class="muted" id="progress-label"></p>
+      <div id="run-sections"></div>
+      <div class="checklist-actions mt1">
+        <button class="btn btn-primary" id="complete-btn" disabled>Mark complete</button>
+        <button class="btn btn-secondary" id="abandon-btn">Abandon</button>
+      </div>
+    </div>
+
+    <!-- Done view -->
+    <div id="done-view" class="hidden">
+      <div class="card">
+        <h2 style="color:var(--green-dark);margin-bottom:.5rem">Checklist complete!</h2>
+        <p class="muted" id="done-msg" style="margin-bottom:1rem"></p>
+        <button class="btn btn-primary" id="done-back-btn">Back to checklists</button>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- Add checklist modal -->
+  <div id="add-modal" class="modal hidden" role="dialog" aria-modal="true">
+    <div class="modal-card">
+      <h2>New checklist</h2>
+      <form id="add-checklist-form" autocomplete="off">
+        <div class="form-row">
+          <label>Name *</label>
+          <input type="text" id="new-cl-name" required data-1p-ignore autocomplete="off">
+        </div>
+        <p id="add-cl-error" class="error hidden"></p>
+        <div class="modal-actions">
+          <button type="submit" class="btn btn-primary">Create</button>
+          <button type="button" class="btn btn-secondary" id="add-cl-cancel">Cancel</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="/assets/app.js" type="module"></script>
+  <script type="module">
+    const CHECKOUT_CATEGORY_ID = 'checkout';
+
+    // ── State ──────────────────────────────────────────────────────
+    let checklists  = [];
+    let activeList  = null;   // checklist being edited or run
+    let editItems   = [];
+    let runItems    = [];
+    let session     = null;
+    const sessionPhotos = {};
+
+    function lsKey(id) { return `cabin_session_${id}`; }
+    function esc(s) { return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+    const SVG_CAMERA = `<svg class="camera-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>`;
+    const SVG_EDIT   = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>`;
+    const SVG_DELETE = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>`;
+
+    // ── View switching ──────────────────────────────────────────────
+    function setView(v) {
+      ['list','edit','run','done'].forEach(name =>
+        document.getElementById(`${name}-view`).classList.toggle('hidden', v !== name)
+      );
+    }
+
+    // ── List view ───────────────────────────────────────────────────
+    async function loadList() {
+      const res = await fetch(`${CabinOS.API}/checklists`);
+      checklists = await res.json();
+      renderList();
+      setView('list');
+    }
+
+    function renderList() {
+      const el = document.getElementById('cl-list');
+      if (!checklists.length) {
+        el.innerHTML = '<p class="muted" style="padding:.75rem">No checklists yet.</p>';
+        return;
+      }
+      el.innerHTML = checklists.map(cl => {
+        const hasSession = !!localStorage.getItem(lsKey(cl.id));
+        return `
+          <div class="cl-card">
+            <div class="cl-card-info">
+              <div class="cl-card-name">${esc(cl.name)}</div>
+              <div class="cl-card-meta">${cl.item_count} item${cl.item_count !== 1 ? 's' : ''}</div>
+            </div>
+            <div class="cl-card-actions">
+              <button class="btn ${hasSession ? 'btn-secondary' : 'btn-primary'} run-btn" data-id="${esc(cl.id)}" style="font-size:.85rem;padding:.35rem .8rem">
+                ${hasSession ? 'Resume' : 'Run'}
+              </button>
+              <button class="icon-btn edit-cl-btn" data-id="${esc(cl.id)}" title="Edit">${SVG_EDIT}</button>
+              <button class="icon-btn danger delete-cl-btn" data-id="${esc(cl.id)}" title="Delete">${SVG_DELETE}</button>
+            </div>
+          </div>`;
+      }).join('');
+
+      el.querySelectorAll('.run-btn').forEach(btn =>
+        btn.addEventListener('click', () => openRunView(checklists.find(c => c.id === btn.dataset.id)))
+      );
+      el.querySelectorAll('.edit-cl-btn').forEach(btn =>
+        btn.addEventListener('click', () => openEditView(checklists.find(c => c.id === btn.dataset.id)))
+      );
+      el.querySelectorAll('.delete-cl-btn').forEach(btn =>
+        btn.addEventListener('click', async () => {
+          const cl = checklists.find(c => c.id === btn.dataset.id);
+          if (!confirm(`Delete "${cl.name}" and all its items?`)) return;
+          await CabinOS.apiFetch(`/checklists/${cl.id}`, { method: 'DELETE' });
+          loadList();
+        })
+      );
+    }
+
+    // ── Edit view ───────────────────────────────────────────────────
+    async function openEditView(cl) {
+      activeList = cl;
+      const res = await fetch(`${CabinOS.API}/checklist/items?checklist_id=${cl.id}`);
+      editItems = await res.json();
+      document.getElementById('edit-title-input').value = cl.name;
+      renderEditItems();
+      setView('edit');
+    }
+
+    function renderEditItems() {
+      const el = document.getElementById('edit-items');
+      if (!editItems.length) {
+        el.innerHTML = '<div style="padding:.75rem;font-size:.85rem;color:var(--text-muted)">No items yet. Add some below.</div>';
+        refreshSectionDatalist();
+        return;
+      }
+      const bySection = {};
+      for (const item of editItems) (bySection[item.section] = bySection[item.section] || []).push(item);
+      el.innerHTML = Object.entries(bySection).map(([sec, items]) => `
+        <div class="edit-section-label">${esc(sec)}</div>
+        ${items.map(item => `
+          <div class="edit-item" data-id="${esc(item.id)}">
+            <span class="edit-item-label">
+              ${item.photo_prompt ? `${SVG_CAMERA} ` : ''}${esc(item.label)}
+              ${item.photo_prompt ? `<span class="edit-item-photo">· ${esc(item.photo_prompt)}</span>` : ''}
+            </span>
+            <button class="icon-btn danger delete-item-btn" data-id="${esc(item.id)}" title="Delete">×</button>
+          </div>`).join('')}
+      `).join('');
+
+      el.querySelectorAll('.delete-item-btn').forEach(btn =>
+        btn.addEventListener('click', async () => {
+          await CabinOS.apiFetch(`/checklist/items/${btn.dataset.id}`, { method: 'DELETE' });
+          editItems = editItems.filter(i => i.id !== btn.dataset.id);
+          renderEditItems();
+        })
+      );
+      refreshSectionDatalist();
+    }
+
+    function refreshSectionDatalist() {
+      const sections = [...new Set(editItems.map(i => i.section))].filter(Boolean);
+      document.getElementById('section-datalist').innerHTML =
+        sections.map(s => `<option value="${esc(s)}">`).join('');
+    }
+
+    // Save title on blur/enter
+    const titleInput = document.getElementById('edit-title-input');
+    async function saveTitle() {
+      const name = titleInput.value.trim();
+      if (!name || name === activeList?.name) return;
+      await CabinOS.apiFetch(`/checklists/${activeList.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ name, sort_order: activeList.sort_order ?? 0 }),
+      });
+      activeList.name = name;
+      const cl = checklists.find(c => c.id === activeList.id);
+      if (cl) cl.name = name;
+    }
+    titleInput.addEventListener('blur', saveTitle);
+    titleInput.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); titleInput.blur(); } });
+
+    document.getElementById('add-item-form').addEventListener('submit', async e => {
+      e.preventDefault();
+      const label       = document.getElementById('new-label').value.trim();
+      const section     = document.getElementById('new-section').value.trim();
+      const photoPrompt = document.getElementById('new-photo-prompt').value.trim();
+      if (!label || !section) return;
+      const res = await CabinOS.apiFetch('/checklist/items', {
+        method: 'POST',
+        body: JSON.stringify({
+          id: CabinOS.ulid(),
+          label,
+          section,
+          photo_prompt: photoPrompt || null,
+          checklist_id: activeList.id,
+          sort_order: editItems.length,
+        }),
+      });
+      if (res.ok) {
+        const item = await res.json();
+        editItems.push(item);
+        e.target.reset();
+        renderEditItems();
+        // Update count in checklists array
+        const cl = checklists.find(c => c.id === activeList.id);
+        if (cl) cl.item_count = (cl.item_count || 0) + 1;
+      }
+    });
+
+    document.getElementById('edit-back-btn').addEventListener('click', () => {
+      renderList();
+      setView('list');
+    });
+
+    // ── Run view ────────────────────────────────────────────────────
+    async function openRunView(cl) {
+      activeList = cl;
+      Object.keys(sessionPhotos).forEach(k => delete sessionPhotos[k]);
+
+      const [itemsRes] = await Promise.all([
+        fetch(`${CabinOS.API}/checklist/items?checklist_id=${cl.id}`),
+      ]);
+      runItems = await itemsRes.json();
+
+      document.getElementById('run-title').textContent = cl.name;
+
+      const lsData = localStorage.getItem(lsKey(cl.id));
+      if (lsData) {
+        session = JSON.parse(lsData);
+      } else {
+        const activeRes = await fetch(`${CabinOS.API}/checklist/sessions/active?checklist_id=${cl.id}`);
+        const active = await activeRes.json();
+        if (active) {
+          session = active;
+          localStorage.setItem(lsKey(cl.id), JSON.stringify(session));
+        } else {
+          const r = await CabinOS.apiFetch('/checklist/sessions', {
+            method: 'POST',
+            body: JSON.stringify({ id: CabinOS.ulid(), started_at: Math.floor(Date.now() / 1000), checklist_id: cl.id }),
+          });
+          session = await r.json();
+          localStorage.setItem(lsKey(cl.id), JSON.stringify(session));
+        }
+      }
+
+      renderRun();
+      setView('run');
+    }
+
+    function renderRun() {
+      const bySection = {};
+      for (const item of runItems) (bySection[item.section] = bySection[item.section] || []).push(item);
+
+      document.getElementById('run-sections').innerHTML = Object.entries(bySection).map(([sec, items]) => `
+        <div class="section-label">${esc(sec)}</div>
+        <div class="card">
+          ${items.map(renderRunItem).join('')}
+        </div>`).join('');
+
+      document.querySelectorAll('.checklist-item:not(.photo-item)').forEach(el => {
+        el.addEventListener('click', e => {
+          if (e.target.tagName === 'INPUT') return;
+          const cb = el.querySelector('input[type=checkbox]');
+          cb.checked = !cb.checked;
+          toggleItem(el.dataset.id, cb.checked);
+        });
+        el.querySelector('input')?.addEventListener('change', e => toggleItem(el.dataset.id, e.target.checked));
+      });
+
+      document.querySelectorAll('.photo-file-input').forEach(input =>
+        input.addEventListener('change', () => handlePhotoUpload(input))
+      );
+
+      updateProgress();
+    }
+
+    function renderRunItem(item) {
+      const checked = session.checked_ids.includes(item.id);
+      if (item.photo_prompt) {
+        const photo = sessionPhotos[item.id];
+        const actionHtml = checked
+          ? `${photo ? `<img class="photo-thumb" src="${esc(photo.url)}" alt="">` : ''}
+             <span class="photo-taken-badge">
+               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+               Photo saved
+             </span>`
+          : `<label class="photo-upload-label" id="upload-label-${item.id}">
+               ${SVG_CAMERA} Take photo
+               <input type="file" accept="image/*" capture="environment"
+                 class="photo-file-input" data-id="${esc(item.id)}" style="display:none">
+             </label>`;
+        return `
+          <div class="checklist-item photo-item${checked ? ' checked' : ''}" data-id="${esc(item.id)}">
+            <div class="checklist-label">${SVG_CAMERA}<span>${esc(item.label)}</span></div>
+            <div class="photo-prompt-text">${esc(item.photo_prompt)}</div>
+            ${actionHtml}
+          </div>`;
+      }
+      return `
+        <div class="checklist-item${checked ? ' checked' : ''}" data-id="${esc(item.id)}">
+          <input type="checkbox" id="item-${esc(item.id)}" ${checked ? 'checked' : ''}>
+          <label for="item-${esc(item.id)}">${esc(item.label)}</label>
+        </div>`;
+    }
+
+    async function handlePhotoUpload(input) {
+      const file = input.files[0];
+      if (!file) return;
+      const itemId = input.dataset.id;
+      const label = document.getElementById(`upload-label-${itemId}`);
+      if (label) { label.classList.add('uploading'); label.childNodes[label.childNodes.length - 1].textContent = ' Uploading…'; }
+      try {
+        const photoId  = CabinOS.ulid();
+        const taken_at = Math.floor(Date.now() / 1000);
+        const presignRes = await CabinOS.apiFetch('/photos/presign', {
+          method: 'POST',
+          body: JSON.stringify({ id: photoId, category_id: CHECKOUT_CATEGORY_ID, session_id: session.id, taken_at, content_type: file.type || 'image/jpeg' }),
+        });
+        const { upload_url, r2_key } = await presignRes.json();
+        await fetch(upload_url, { method: 'PUT', headers: { 'Content-Type': file.type || 'image/jpeg' }, body: file });
+        const confirmRes = await CabinOS.apiFetch('/photos/confirm', {
+          method: 'POST',
+          body: JSON.stringify({ id: photoId, category_id: CHECKOUT_CATEGORY_ID, session_id: session.id, r2_key, taken_at, notes: runItems.find(i => i.id === itemId)?.photo_prompt ?? null }),
+        });
+        const photo = await confirmRes.json();
+        sessionPhotos[itemId] = { url: photo.url };
+        await toggleItem(itemId, true);
+        renderRun();
+      } catch (err) {
+        console.error(err);
+        alert('Photo upload failed. Please try again.');
+        if (label) { label.classList.remove('uploading'); }
+      }
+    }
+
+    async function toggleItem(id, checked) {
+      if (checked) { if (!session.checked_ids.includes(id)) session.checked_ids.push(id); }
+      else { session.checked_ids = session.checked_ids.filter(x => x !== id); }
+      localStorage.setItem(lsKey(activeList.id), JSON.stringify(session));
+      updateProgress();
+      try {
+        await CabinOS.apiFetch(`/checklist/sessions/${session.id}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ checked_ids: session.checked_ids, notes: null }),
+        });
+      } catch (e) { /* offline */ }
+    }
+
+    function updateProgress() {
+      const total = runItems.length;
+      const done  = session.checked_ids.length;
+      const pct   = total ? Math.round(done / total * 100) : 0;
+      document.getElementById('progress-fill').style.width = `${pct}%`;
+      document.getElementById('progress-label').textContent = `${done} / ${total} complete`;
+      document.getElementById('complete-btn').disabled = done < total;
+      document.querySelectorAll('.checklist-item:not(.photo-item)').forEach(el => {
+        const c = session.checked_ids.includes(el.dataset.id);
+        el.classList.toggle('checked', c);
+        const cb = el.querySelector('input');
+        if (cb) cb.checked = c;
+      });
+      document.querySelectorAll('.checklist-item.photo-item').forEach(el =>
+        el.classList.toggle('checked', session.checked_ids.includes(el.dataset.id))
+      );
+    }
+
+    document.getElementById('complete-btn').addEventListener('click', async () => {
+      const res = await CabinOS.apiFetch(`/checklist/sessions/${session.id}/complete`, {
+        method: 'POST',
+        body: JSON.stringify({ completed_at: Math.floor(Date.now() / 1000), notes: null }),
+      });
+      if (res.ok) {
+        localStorage.removeItem(lsKey(activeList.id));
+        document.getElementById('done-msg').textContent = `${activeList.name} checklist finished.`;
+        setView('done');
+      }
+    });
+
+    document.getElementById('abandon-btn').addEventListener('click', () => {
+      localStorage.removeItem(lsKey(activeList.id));
+      session = null;
+      loadList();
+    });
+
+    document.getElementById('run-back-btn').addEventListener('click', () => {
+      renderList();
+      setView('list');
+    });
+
+    document.getElementById('done-back-btn').addEventListener('click', loadList);
+
+    // ── Add checklist modal ──────────────────────────────────────────
+    document.getElementById('add-checklist-btn').addEventListener('click', () => {
+      document.getElementById('add-checklist-form').reset();
+      document.getElementById('add-cl-error').classList.add('hidden');
+      document.getElementById('add-modal').classList.remove('hidden');
+    });
+    document.getElementById('add-cl-cancel').addEventListener('click', () =>
+      document.getElementById('add-modal').classList.add('hidden')
+    );
+    document.getElementById('add-modal').addEventListener('click', e => {
+      if (e.target === document.getElementById('add-modal'))
+        document.getElementById('add-modal').classList.add('hidden');
+    });
+
+    document.getElementById('add-checklist-form').addEventListener('submit', async e => {
+      e.preventDefault();
+      const errEl = document.getElementById('add-cl-error');
+      errEl.classList.add('hidden');
+      const name = document.getElementById('new-cl-name').value.trim();
+      const res = await CabinOS.apiFetch('/checklists', {
+        method: 'POST',
+        body: JSON.stringify({ id: CabinOS.ulid(), name, sort_order: checklists.length }),
+      });
+      if (res.ok) {
+        document.getElementById('add-modal').classList.add('hidden');
+        const cl = await res.json();
+        checklists.push(cl);
+        // Open edit view immediately so user can add items
+        openEditView(cl);
+      } else {
+        const body = await res.json().catch(() => ({}));
+        errEl.textContent = body.error || 'Failed to create.';
+        errEl.classList.remove('hidden');
+      }
+    });
+
+    loadList();
+  </script>
+</body>
+</html>

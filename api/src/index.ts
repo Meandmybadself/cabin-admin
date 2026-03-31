@@ -6,6 +6,7 @@ import { handlePhotoCategories } from './routes/photo-categories';
 import { handleVideos } from './routes/videos';
 import { handleBusinesses } from './routes/businesses';
 import { handleAppliances } from './routes/appliances';
+import { handleChecklists } from './routes/checklists';
 import { validateBasicAuth } from './middleware/auth';
 
 export interface Env {
@@ -47,6 +48,8 @@ export default {
           response = await handleDocs(request, env, path);
         } else if (path.startsWith('/api/contacts')) {
           response = await handleContacts(request, env, path);
+        } else if (path.startsWith('/api/checklists')) {
+          response = await handleChecklists(request, env, path);
         } else if (path.startsWith('/api/checklist')) {
           response = await handleChecklist(request, env, path);
         } else if (path.startsWith('/api/photo-categories')) {
