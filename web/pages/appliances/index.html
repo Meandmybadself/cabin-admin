@@ -22,16 +22,30 @@
     .app-icon-btn:hover { background:var(--tan-dark); }
     .app-icon-btn.delete:hover { background:#f8d7da; color:#721c24; }
 
-    .events-list { margin-top:.5rem; }
-    .event-row { display:flex; align-items:flex-start; gap:.75rem; padding:.4rem 0; border-bottom:1px solid var(--tan-dark); font-size:.85rem; }
+    .detail-section { margin-bottom:.85rem; }
+    .detail-section:last-child { margin-bottom:0; }
+    .detail-label { font-size:.75rem; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:.05em; margin-bottom:.35rem; }
+
+    .events-list { }
+    .event-row { display:flex; align-items:flex-start; gap:.75rem; padding:.35rem 0; border-bottom:1px solid var(--tan-dark); font-size:.85rem; }
     .event-row:last-child { border-bottom:none; }
     .event-date { color:var(--text-muted); white-space:nowrap; min-width:6.5rem; }
     .event-desc { flex:1; color:var(--text); }
-    .event-delete-btn { background:none; border:none; cursor:pointer; color:var(--text-muted); padding:.1rem .3rem; border-radius:var(--radius); line-height:1; font-size:.9rem; }
-    .event-delete-btn:hover { background:#f8d7da; color:#721c24; }
-    .add-event-row { display:flex; gap:.4rem; margin-top:.6rem; align-items:center; }
-    .add-event-row input[type=date] { width:9rem; }
-    .add-event-row input[type=text] { flex:1; }
+    .row-delete-btn { background:none; border:none; cursor:pointer; color:var(--text-muted); padding:.1rem .3rem; border-radius:var(--radius); line-height:1; font-size:.9rem; flex-shrink:0; }
+    .row-delete-btn:hover { background:#f8d7da; color:#721c24; }
+    .add-inline-row { display:flex; gap:.4rem; margin-top:.5rem; align-items:center; }
+    .add-inline-row input[type=date] { width:9rem; }
+    .add-inline-row input[type=text],
+    .add-inline-row input[type=url] { flex:1; }
+
+    .manuals-list { }
+    .manual-row { display:flex; align-items:center; gap:.5rem; padding:.35rem 0; border-bottom:1px solid var(--tan-dark); font-size:.85rem; }
+    .manual-row:last-child { border-bottom:none; }
+    .manual-link { flex:1; color:var(--green-mid); text-decoration:none; font-weight:500; }
+    .manual-link:hover { text-decoration:underline; }
+    .manual-type-badge { font-size:.7rem; padding:.1rem .4rem; border-radius:99px; background:var(--tan-dark); color:var(--text-muted); white-space:nowrap; }
+    .manual-add-btns { display:flex; gap:.4rem; margin-top:.5rem; }
+    .upload-progress { font-size:.82rem; color:var(--text-muted); margin-top:.35rem; display:none; }
 
     .modal-card {
       background:#fff; border-radius:var(--radius);
@@ -66,7 +80,7 @@
     <div id="appliance-list"><p class="muted">Loading…</p></div>
   </main>
 
-  <!-- Add/edit modal -->
+  <!-- Add/edit appliance modal -->
   <div id="add-modal" class="modal hidden" role="dialog" aria-modal="true">
     <div class="modal-card">
       <h2 id="modal-title">Add appliance</h2>
@@ -92,29 +106,88 @@
     </div>
   </div>
 
+  <!-- Add link modal -->
+  <div id="link-modal" class="modal hidden" role="dialog" aria-modal="true">
+    <div class="modal-card">
+      <h2>Add manual link</h2>
+      <form id="link-form" autocomplete="off">
+        <div class="form-row">
+          <label>Label *</label>
+          <input type="text" id="link-name" placeholder="e.g. Owner's Manual" required data-1p-ignore autocomplete="off">
+        </div>
+        <div class="form-row">
+          <label>URL *</label>
+          <input type="url" id="link-url" placeholder="https://…" required data-1p-ignore autocomplete="off">
+        </div>
+        <p id="link-error" class="error hidden"></p>
+        <div class="modal-actions">
+          <button type="submit" class="btn btn-primary">Save</button>
+          <button type="button" class="btn btn-secondary" id="link-cancel-btn">Cancel</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <script src="/assets/app.js" type="module"></script>
   <script type="module">
     function esc(s) { return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
     let allAppliances = [];
 
-    function renderEvents(appliance) {
-      const events = appliance.events || [];
-      const rows = events.map(ev => `
-        <div class="event-row" data-event-id="${esc(ev.id)}">
-          <span class="event-date">${esc(ev.date)}</span>
-          <span class="event-desc">${esc(ev.description)}</span>
-          <button class="event-delete-btn" data-event-id="${esc(ev.id)}" data-appliance-id="${esc(appliance.id)}" title="Delete event">×</button>
-        </div>`).join('');
-      return `
-        ${appliance.notes ? `<div style="font-size:.88rem;color:var(--text-muted);margin-bottom:.5rem">${esc(appliance.notes)}</div>` : ''}
-        ${appliance.model ? `<div style="font-size:.82rem;color:var(--text-muted);margin-bottom:.5rem">Model: ${esc(appliance.model)}</div>` : ''}
-        <div class="events-list">${rows || '<div style="font-size:.85rem;color:var(--text-muted)">No events yet.</div>'}</div>
-        <div class="add-event-row">
-          <input type="date" class="new-event-date" data-id="${esc(appliance.id)}" data-1p-ignore autocomplete="off">
-          <input type="text" class="new-event-desc" placeholder="Description" data-id="${esc(appliance.id)}" data-1p-ignore autocomplete="off">
-          <button type="button" class="btn btn-secondary add-event-btn" data-id="${esc(appliance.id)}" style="white-space:nowrap">+ Log</button>
+    function renderDetail(appliance) {
+      const events  = appliance.events  || [];
+      const manuals = appliance.manuals || [];
+
+      const manualsHtml = `
+        <div class="detail-section">
+          <div class="detail-label">Manuals</div>
+          <div class="manuals-list" data-id="${esc(appliance.id)}">
+            ${manuals.length ? manuals.map(m => `
+              <div class="manual-row" data-manual-id="${esc(m.id)}">
+                <a class="manual-link" href="${esc(m.url)}" target="_blank" rel="noopener">
+                  ${esc(m.name)}
+                </a>
+                <span class="manual-type-badge">${m.r2_key ? 'PDF' : 'Link'}</span>
+                <button class="row-delete-btn manual-delete-btn"
+                  data-manual-id="${esc(m.id)}" data-appliance-id="${esc(appliance.id)}"
+                  title="Remove">×</button>
+              </div>`) .join('') : '<div style="font-size:.85rem;color:var(--text-muted)">No manuals yet.</div>'}
+          </div>
+          <div class="manual-add-btns">
+            <button type="button" class="btn btn-secondary add-link-btn" data-id="${esc(appliance.id)}" style="font-size:.82rem;padding:.3rem .7rem">+ Link</button>
+            <label class="btn btn-secondary" style="font-size:.82rem;padding:.3rem .7rem;cursor:pointer;margin:0">
+              + PDF
+              <input type="file" accept="application/pdf" class="pdf-upload-input" data-id="${esc(appliance.id)}" style="display:none">
+            </label>
+            <span class="upload-progress" data-id="${esc(appliance.id)}">Uploading…</span>
+          </div>
         </div>`;
+
+      const eventsHtml = `
+        <div class="detail-section">
+          <div class="detail-label">Event log</div>
+          <div class="events-list">
+            ${events.length ? events.map(ev => `
+              <div class="event-row">
+                <span class="event-date">${esc(ev.date)}</span>
+                <span class="event-desc">${esc(ev.description)}</span>
+                <button class="row-delete-btn event-delete-btn"
+                  data-event-id="${esc(ev.id)}" data-appliance-id="${esc(appliance.id)}"
+                  title="Delete">×</button>
+              </div>`).join('') : '<div style="font-size:.85rem;color:var(--text-muted)">No events yet.</div>'}
+          </div>
+          <div class="add-inline-row">
+            <input type="date" class="new-event-date" data-id="${esc(appliance.id)}" data-1p-ignore autocomplete="off">
+            <input type="text" class="new-event-desc" placeholder="Description" data-id="${esc(appliance.id)}" data-1p-ignore autocomplete="off">
+            <button type="button" class="btn btn-secondary add-event-btn" data-id="${esc(appliance.id)}" style="white-space:nowrap">+ Log</button>
+          </div>
+        </div>`;
+
+      return `
+        ${appliance.notes ? `<div class="detail-section" style="font-size:.88rem;color:var(--text-muted)">${esc(appliance.notes)}</div>` : ''}
+        ${appliance.model ? `<div style="font-size:.82rem;color:var(--text-muted);margin-bottom:.75rem">Model: ${esc(appliance.model)}</div>` : ''}
+        ${manualsHtml}
+        ${eventsHtml}`;
     }
 
     function renderList() {
@@ -123,8 +196,14 @@
         container.innerHTML = '<p class="muted">No appliances yet. Tap + Add to get started.</p>';
         return;
       }
+
+      // Remember which rows were open before re-render
+      const openIds = new Set(
+        [...container.querySelectorAll('.detail-row.open')].map(r => r.dataset.id)
+      );
+
       const rows = allAppliances.map(a => `
-        <tr class="app-row" data-id="${esc(a.id)}">
+        <tr class="app-row${openIds.has(a.id) ? ' expanded' : ''}" data-id="${esc(a.id)}">
           <td><div class="app-name-cell">
             <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4,6 8,10 12,6"/></svg>
             ${esc(a.name)}
@@ -139,8 +218,8 @@
             </button>
           </td>
         </tr>
-        <tr class="detail-row" data-id="${esc(a.id)}">
-          <td colspan="3">${renderEvents(a)}</td>
+        <tr class="detail-row${openIds.has(a.id) ? ' open' : ''}" data-id="${esc(a.id)}">
+          <td colspan="3">${renderDetail(a)}</td>
         </tr>`).join('');
 
       container.innerHTML = `
@@ -149,6 +228,7 @@
           <tbody>${rows}</tbody>
         </table>`;
 
+      // Row expand/collapse
       container.querySelectorAll('.app-row').forEach(row => {
         row.addEventListener('click', e => {
           if (e.target.closest('.app-icon-btn')) return;
@@ -158,18 +238,21 @@
         });
       });
 
+      // Delete appliance
       container.querySelectorAll('.delete-app-btn').forEach(btn => {
         btn.addEventListener('click', async () => {
-          if (!confirm('Delete this appliance and all its events?')) return;
+          if (!confirm('Delete this appliance and all its data?')) return;
           await CabinOS.apiFetch(`/appliances/${btn.dataset.id}`, { method: 'DELETE' });
           load();
         });
       });
 
+      // Edit appliance
       container.querySelectorAll('.edit-app-btn').forEach(btn => {
         btn.addEventListener('click', () => openModal(btn.dataset.id));
       });
 
+      // Log event
       container.querySelectorAll('.add-event-btn').forEach(btn => {
         btn.addEventListener('click', async () => {
           const id = btn.dataset.id;
@@ -178,21 +261,79 @@
           const date = dateInput.value.trim();
           const description = descInput.value.trim();
           if (!date || !description) return;
-          const res = await CabinOS.apiFetch(`/appliances/${id}/events`, {
+          await CabinOS.apiFetch(`/appliances/${id}/events`, {
             method: 'POST',
             body: JSON.stringify({ id: CabinOS.ulid(), date, description }),
           });
-          if (res.ok) { load(); }
+          load();
         });
       });
 
+      // Delete event
       container.querySelectorAll('.event-delete-btn').forEach(btn => {
         btn.addEventListener('click', async e => {
           e.stopPropagation();
-          const appId = btn.dataset.applianceId;
-          const evId = btn.dataset.eventId;
-          await CabinOS.apiFetch(`/appliances/${appId}/events/${evId}`, { method: 'DELETE' });
+          await CabinOS.apiFetch(`/appliances/${btn.dataset.applianceId}/events/${btn.dataset.eventId}`, { method: 'DELETE' });
           load();
+        });
+      });
+
+      // Add link manual
+      container.querySelectorAll('.add-link-btn').forEach(btn => {
+        btn.addEventListener('click', () => openLinkModal(btn.dataset.id));
+      });
+
+      // Delete manual
+      container.querySelectorAll('.manual-delete-btn').forEach(btn => {
+        btn.addEventListener('click', async e => {
+          e.stopPropagation();
+          if (!confirm('Remove this manual?')) return;
+          await CabinOS.apiFetch(`/appliances/${btn.dataset.applianceId}/manuals/${btn.dataset.manualId}`, { method: 'DELETE' });
+          load();
+        });
+      });
+
+      // Upload PDF
+      container.querySelectorAll('.pdf-upload-input').forEach(input => {
+        input.addEventListener('change', async e => {
+          e.stopPropagation();
+          const file = input.files[0];
+          if (!file) return;
+          const appId = input.dataset.id;
+          const manualId = CabinOS.ulid();
+          const name = file.name.replace(/\.pdf$/i, '').replace(/[-_]/g, ' ');
+          const progress = container.querySelector(`.upload-progress[data-id="${appId}"]`);
+          progress.style.display = 'inline';
+
+          try {
+            // 1. Presign
+            const presignRes = await CabinOS.apiFetch(`/appliances/${appId}/manuals/presign`, {
+              method: 'POST',
+              body: JSON.stringify({ id: manualId, name }),
+            });
+            const { upload_url, r2_key } = await presignRes.json();
+
+            // 2. Upload directly to R2
+            await fetch(upload_url, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/pdf' },
+              body: file,
+            });
+
+            // 3. Confirm
+            await CabinOS.apiFetch(`/appliances/${appId}/manuals/confirm`, {
+              method: 'POST',
+              body: JSON.stringify({ id: manualId, name, r2_key }),
+            });
+
+            load();
+          } catch (err) {
+            alert('Upload failed. Please try again.');
+            console.error(err);
+          } finally {
+            progress.style.display = 'none';
+            input.value = '';
+          }
         });
       });
     }
@@ -203,7 +344,7 @@
       renderList();
     }
 
-    // ── Modal ──
+    // ── Appliance modal ──
     let editingId = null;
 
     async function openModal(id = null) {
@@ -214,7 +355,7 @@
       if (id) {
         const a = allAppliances.find(x => x.id === id);
         if (a) {
-          document.getElementById('app-name').value  = a.name || '';
+          document.getElementById('app-name').value  = a.name  || '';
           document.getElementById('app-model').value = a.model || '';
           document.getElementById('app-notes').value = a.notes || '';
         }
@@ -246,10 +387,49 @@
       const res = editingId
         ? await CabinOS.apiFetch(`/appliances/${editingId}`, { method: 'PUT', body: JSON.stringify(payload) })
         : await CabinOS.apiFetch('/appliances', { method: 'POST', body: JSON.stringify({ id: CabinOS.ulid(), ...payload }) });
-      if (res.ok) {
-        closeModal();
-        load();
-      } else {
+      if (res.ok) { closeModal(); load(); }
+      else {
+        const body = await res.json().catch(() => ({}));
+        errEl.textContent = body.error || 'Save failed.';
+        errEl.classList.remove('hidden');
+      }
+    });
+
+    // ── Link manual modal ──
+    let linkTargetId = null;
+
+    function openLinkModal(applianceId) {
+      linkTargetId = applianceId;
+      document.getElementById('link-form').reset();
+      document.getElementById('link-error').classList.add('hidden');
+      document.getElementById('link-modal').classList.remove('hidden');
+    }
+
+    function closeLinkModal() {
+      document.getElementById('link-modal').classList.add('hidden');
+      linkTargetId = null;
+    }
+
+    document.getElementById('link-cancel-btn').addEventListener('click', closeLinkModal);
+    document.getElementById('link-modal').addEventListener('click', e => {
+      if (e.target === document.getElementById('link-modal')) closeLinkModal();
+    });
+
+    document.getElementById('link-form').addEventListener('submit', async e => {
+      e.preventDefault();
+      const errEl = document.getElementById('link-error');
+      errEl.classList.add('hidden');
+      const payload = {
+        id:   CabinOS.ulid(),
+        name: document.getElementById('link-name').value.trim(),
+        url:  document.getElementById('link-url').value.trim(),
+      };
+      const res = await CabinOS.apiFetch(`/appliances/${linkTargetId}/manuals`, {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
+      if (res.ok) { closeLinkModal(); load(); }
+      else {
         const body = await res.json().catch(() => ({}));
         errEl.textContent = body.error || 'Save failed.';
         errEl.classList.remove('hidden');
