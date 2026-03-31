@@ -108,7 +108,7 @@
                 <input type="text" id="edit-title" placeholder="Title" style="font-size:1.1rem;font-weight:600" data-1p-ignore autocomplete="off">
                 <input type="text" id="edit-category" placeholder="Category" data-1p-ignore autocomplete="off">
               </div>
-              <textarea id="edit-body" style="width:100%;min-height:320px;font-family:monospace;font-size:.88rem;resize:vertical"></textarea>
+              <textarea id="edit-body" style="width:100%;min-height:320px;resize:vertical" data-md></textarea>
               <div style="display:flex;gap:.5rem;margin-top:.75rem">
                 <button class="btn btn-primary" id="save-btn">Save</button>
                 <button class="btn btn-secondary" id="cancel-edit-btn">Cancel</button>
@@ -217,6 +217,7 @@
       document.getElementById('edit-category').value = currentDoc.category;
       document.getElementById('edit-body').value = currentDoc.body;
       document.getElementById('edit-error').style.display = 'none';
+      CabinOS.resetMdEditor(document.getElementById('edit-body'));
     });
 
     document.getElementById('cancel-edit-btn').addEventListener('click', () => {

@@ -47,14 +47,6 @@
     .manual-add-btns { display:flex; gap:.4rem; margin-top:.5rem; }
     .upload-progress { font-size:.82rem; color:var(--text-muted); margin-top:.35rem; display:none; }
 
-    .notes-md { font-size:.88rem; color:var(--text-muted); }
-    .notes-md p { margin:.25rem 0; }
-    .notes-md p:first-child { margin-top:0; }
-    .notes-md ul { margin:.25rem 0 .25rem 1.25rem; padding:0; }
-    .notes-md li { margin:.15rem 0; }
-    .notes-md strong { color:var(--text); }
-    .notes-md h1,.notes-md h2,.notes-md h3 { font-size:.88rem; font-weight:700; color:var(--text); margin:.4rem 0 .15rem; }
-
     .modal-card {
       background:#fff; border-radius:var(--radius);
       box-shadow:0 8px 32px rgba(0,0,0,.2);
@@ -103,7 +95,7 @@
         </div>
         <div class="form-row">
           <label>Notes</label>
-          <textarea id="app-notes" style="min-height:80px"></textarea>
+          <textarea id="app-notes" style="min-height:80px" data-md></textarea>
         </div>
         <p id="add-error" class="error hidden"></p>
         <div class="modal-actions">
@@ -360,6 +352,7 @@
       document.getElementById('modal-title').textContent = id ? 'Edit appliance' : 'Add appliance';
       document.getElementById('add-form').reset();
       document.getElementById('add-error').classList.add('hidden');
+      CabinOS.resetMdEditor(document.getElementById('app-notes'));
       if (id) {
         const a = allAppliances.find(x => x.id === id);
         if (a) {
