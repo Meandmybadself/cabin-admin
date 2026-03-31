@@ -47,6 +47,14 @@
     .manual-add-btns { display:flex; gap:.4rem; margin-top:.5rem; }
     .upload-progress { font-size:.82rem; color:var(--text-muted); margin-top:.35rem; display:none; }
 
+    .notes-md { font-size:.88rem; color:var(--text-muted); }
+    .notes-md p { margin:.25rem 0; }
+    .notes-md p:first-child { margin-top:0; }
+    .notes-md ul { margin:.25rem 0 .25rem 1.25rem; padding:0; }
+    .notes-md li { margin:.15rem 0; }
+    .notes-md strong { color:var(--text); }
+    .notes-md h1,.notes-md h2,.notes-md h3 { font-size:.88rem; font-weight:700; color:var(--text); margin:.4rem 0 .15rem; }
+
     .modal-card {
       background:#fff; border-radius:var(--radius);
       box-shadow:0 8px 32px rgba(0,0,0,.2);
@@ -184,7 +192,7 @@
         </div>`;
 
       return `
-        ${appliance.notes ? `<div class="detail-section" style="font-size:.88rem;color:var(--text-muted)">${esc(appliance.notes)}</div>` : ''}
+        ${appliance.notes ? `<div class="detail-section notes-md">${CabinOS.renderMarkdown(appliance.notes)}</div>` : ''}
         ${appliance.model ? `<div style="font-size:.82rem;color:var(--text-muted);margin-bottom:.75rem">Model: ${esc(appliance.model)}</div>` : ''}
         ${manualsHtml}
         ${eventsHtml}`;
