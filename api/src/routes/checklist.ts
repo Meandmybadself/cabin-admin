@@ -7,6 +7,7 @@ interface ChecklistItem {
   label: string;
   section: string;
   sort_order: number;
+  photo_prompt: string | null;
 }
 
 interface ChecklistSession {
@@ -45,8 +46,8 @@ export async function handleChecklist(request: Request, env: Env, path: string):
     const body = await request.json<Partial<ChecklistItem>>();
     if (!body.id || !body.label) return json({ error: 'id and label required' }, 400);
     await dbRun(env.DB,
-      'INSERT INTO checklist_items (id, label, section, sort_order) VALUES (?, ?, ?, ?)',
-      [body.id, body.label, body.section ?? '', body.sort_order ?? 0]
+      'INSERT INTO checklist_items (id, label, section, sort_order, photo_prompt) VALUES (?, ?, ?, ?, ?)',
+      [body.id, body.label, body.section ?? '', body.sort_order ?? 0, body.photo_prompt ?? null]
     );
     const created = await dbFirst<ChecklistItem>(env.DB, 'SELECT * FROM checklist_items WHERE id = ?', [body.id]);
     return json(created, 201);
@@ -71,8 +72,8 @@ export async function handleChecklist(request: Request, env: Env, path: string):
     const body = await request.json<Partial<ChecklistItem>>();
     if (!body.label) return json({ error: 'label required' }, 400);
     const result = await dbRun(env.DB,
-      'UPDATE checklist_items SET label=?, section=?, sort_order=? WHERE id=?',
-      [body.label, body.section ?? '', body.sort_order ?? 0, id]
+      'UPDATE checklist_items SET label=?, section=?, sort_order=?, photo_prompt=? WHERE id=?',
+      [body.label, body.section ?? '', body.sort_order ?? 0, body.photo_prompt ?? null, id]
     );
     if (result.meta.changes === 0) return json({ error: 'Not found' }, 404);
     return json(await dbFirst<ChecklistItem>(env.DB, 'SELECT * FROM checklist_items WHERE id = ?', [id]));
