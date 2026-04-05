@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Todos — Cabin OS</title>
+  <link rel="stylesheet" href="/assets/style.css">
+  <style>
+    .filter-bar { display:flex; gap:.4rem; margin-bottom:1rem; flex-wrap:wrap; }
+    .filter-pill {
+      padding:.3rem .85rem; border-radius:99px; border:none; font-size:.85rem;
+      font-weight:600; cursor:pointer; background:var(--tan-dark); color:var(--text);
+      transition:background .12s,color .12s;
+    }
+    .filter-pill.active { background:var(--green-mid); color:#fff; }
+
+    .todo-list { list-style:none; }
+    .todo-item {
+      display:flex; align-items:flex-start; gap:.65rem;
+      padding:.65rem 0; border-bottom:1px solid var(--tan-dark);
+    }
+    .todo-item:last-child { border-bottom:none; }
+
+    .todo-checkbox {
+      width:1.2rem; height:1.2rem; flex-shrink:0; margin-top:.18rem;
+      accent-color:var(--green-mid); cursor:pointer;
+    }
+
+    .todo-body { flex:1; min-width:0; }
+    .todo-title { font-weight:600; line-height:1.4; word-break:break-word; }
+    .todo-item.done .todo-title { text-decoration:line-through; color:var(--text-muted); }
+    .todo-desc { margin-top:.25rem; font-size:.875rem; }
+
+    .todo-actions { display:flex; gap:.2rem; flex-shrink:0; margin-top:.05rem; }
+    .todo-icon-btn {
+      background:none; border:none; cursor:pointer; padding:.3rem;
+      line-height:1; color:var(--text-muted); border-radius:var(--radius);
+    }
+    .todo-icon-btn:hover { background:var(--tan-dark); }
+    .todo-icon-btn.delete:hover { background:#f8d7da; color:#721c24; }
+
+    .toolbar { display:flex; align-items:center; justify-content:space-between; margin-bottom:.75rem; flex-wrap:wrap; gap:.5rem; }
+    .clear-btn { font-size:.82rem; padding:.35rem .75rem; }
+
+    .modal-card {
+      background:#fff; border-radius:var(--radius);
+      box-shadow:0 8px 32px rgba(0,0,0,.2);
+      width:100%; max-width:460px; padding:1.5rem;
+    }
+    .modal-card h2 { margin-bottom:1rem; color:var(--green-dark); }
+    .modal-card .form-row { margin-bottom:.6rem; }
+    .modal-card label { display:block; font-size:.82rem; font-weight:600; margin-bottom:.25rem; color:var(--text-muted); }
+    .modal-actions { display:flex; gap:.5rem; margin-top:1rem; }
+  </style>
+</head>
+<body>
+  <nav id="nav">
+    <a href="/" class="nav-brand">Cabin OS</a>
+    <div class="nav-links">
+      <a href="/pages/wiki/">Wiki</a>
+      <a href="/pages/checklists/">Checklists</a>
+      <a href="/pages/photos/">Photos</a>
+      <a href="/pages/contacts/">Contacts</a>
+      <a href="/pages/businesses/">Businesses</a>
+      <a href="/pages/appliances/">Appliances</a>
+      <a href="/pages/todos/">Todos</a>
+      <a href="/pages/settings/">Settings</a>
+    </div>
+  </nav>
+  <main>
+    <div class="toolbar">
+      <h1 class="page-title" style="margin-bottom:0">Todos</h1>
+      <div style="display:flex;gap:.5rem;align-items:center">
+        <button class="btn btn-danger clear-btn hidden" id="clear-btn">Clear completed</button>
+        <button class="btn btn-primary" id="add-btn">+ Add</button>
+      </div>
+    </div>
+
+    <div class="filter-bar">
+      <button class="filter-pill active" data-filter="all">All</button>
+      <button class="filter-pill" data-filter="active">Active</button>
+      <button class="filter-pill" data-filter="completed">Completed</button>
+    </div>
+
+    <div id="todo-list-container"><p class="muted">Loading…</p></div>
+  </main>
+
+  <div id="modal" class="modal hidden" role="dialog" aria-modal="true">
+    <div class="modal-card">
+      <h2 id="modal-title">Add todo</h2>
+      <form id="todo-form" autocomplete="off">
+        <div class="form-row">
+          <label>Title *</label>
+          <input type="text" id="t-title" required data-1p-ignore autocomplete="off">
+        </div>
+        <div class="form-row">
+          <label>Category</label>
+          <input type="text" id="t-category" placeholder="e.g. Maintenance, Shopping" data-1p-ignore autocomplete="off" list="category-datalist">
+          <datalist id="category-datalist"></datalist>
+        </div>
+        <div class="form-row">
+          <label>Description</label>
+          <textarea id="t-desc" style="min-height:80px" data-md></textarea>
+        </div>
+        <p id="form-error" class="error hidden"></p>
+        <div class="modal-actions">
+          <button type="submit" class="btn btn-primary">Save</button>
+          <button type="button" class="btn btn-secondary" id="cancel-btn">Cancel</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="/assets/app.js" type="module"></script>
+  <script type="module">
+    const SVG_EDIT   = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>`;
+    const SVG_DELETE = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>`;
+
+    function esc(s) { return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+    let allTodos  = [];
+    let activeFilter = 'all';
+    let editingId = null;
+
+    // ── Filter ─────────────────────────────────────────────────
+    document.querySelectorAll('.filter-pill').forEach(pill => {
+      pill.addEventListener('click', () => {
+        document.querySelectorAll('.filter-pill').forEach(p => p.classList.remove('active'));
+        pill.classList.add('active');
+        activeFilter = pill.dataset.filter;
+        renderList();
+      });
+    });
+
+    // ── Render ─────────────────────────────────────────────────
+    function visibleTodos() {
+      if (activeFilter === 'active')    return allTodos.filter(t => !t.done);
+      if (activeFilter === 'completed') return allTodos.filter(t =>  t.done);
+      return allTodos;
+    }
+
+    function renderList() {
+      const container = document.getElementById('todo-list-container');
+      const todos = visibleTodos();
+
+      // Clear completed button visibility
+      const hasCompleted = allTodos.some(t => t.done);
+      document.getElementById('clear-btn').classList.toggle('hidden', !hasCompleted);
+
+      if (!todos.length) {
+        const msg = activeFilter === 'completed' ? 'No completed todos.'
+                  : activeFilter === 'active'    ? 'Nothing left to do!'
+                  : 'No todos yet. Tap + Add to get started.';
+        container.innerHTML = `<p class="muted">${msg}</p>`;
+        return;
+      }
+
+      // Group by category
+      const byCategory = {};
+      for (const t of todos) (byCategory[t.category] = byCategory[t.category] || []).push(t);
+
+      container.innerHTML = Object.entries(byCategory).map(([cat, items]) => `
+        <div class="section-label">${esc(cat)}</div>
+        <div class="card" style="padding:0 1.25rem">
+          <ul class="todo-list">
+            ${items.map(t => `
+              <li class="todo-item${t.done ? ' done' : ''}" data-id="${esc(t.id)}">
+                <input type="checkbox" class="todo-checkbox" ${t.done ? 'checked' : ''} data-id="${esc(t.id)}" title="Toggle complete">
+                <div class="todo-body">
+                  <div class="todo-title">${esc(t.title)}</div>
+                  ${t.description ? `<div class="todo-desc notes-md">${CabinOS.renderMarkdown(t.description)}</div>` : ''}
+                </div>
+                <div class="todo-actions">
+                  <button class="todo-icon-btn edit-btn" data-id="${esc(t.id)}" title="Edit">${SVG_EDIT}</button>
+                  <button class="todo-icon-btn delete delete-btn" data-id="${esc(t.id)}" title="Delete">${SVG_DELETE}</button>
+                </div>
+              </li>`).join('')}
+          </ul>
+        </div>`).join('');
+
+      // Checkbox toggle
+      container.querySelectorAll('.todo-checkbox').forEach(cb =>
+        cb.addEventListener('change', async () => {
+          const todo = allTodos.find(t => t.id === cb.dataset.id);
+          if (!todo) return;
+          await CabinOS.apiFetch(`/todos/${todo.id}`, {
+            method: 'PUT',
+            body: JSON.stringify({ ...todo, done: cb.checked ? 1 : 0 }),
+          });
+          load();
+        })
+      );
+
+      // Edit
+      container.querySelectorAll('.edit-btn').forEach(btn =>
+        btn.addEventListener('click', () => openModal(btn.dataset.id))
+      );
+
+      // Delete
+      container.querySelectorAll('.delete-btn').forEach(btn =>
+        btn.addEventListener('click', async () => {
+          if (!confirm('Delete this todo?')) return;
+          await CabinOS.apiFetch(`/todos/${btn.dataset.id}`, { method: 'DELETE' });
+          load();
+        })
+      );
+    }
+
+    // ── Load ───────────────────────────────────────────────────
+    async function load() {
+      const res = await fetch(`${CabinOS.API}/todos`);
+      allTodos = await res.json();
+      renderList();
+      refreshCategoryDatalist();
+    }
+
+    function refreshCategoryDatalist() {
+      const cats = [...new Set(allTodos.map(t => t.category))].filter(Boolean).sort();
+      document.getElementById('category-datalist').innerHTML =
+        cats.map(c => `<option value="${esc(c)}">`).join('');
+    }
+
+    // ── Clear completed ────────────────────────────────────────
+    document.getElementById('clear-btn').addEventListener('click', async () => {
+      if (!confirm('Delete all completed todos?')) return;
+      await CabinOS.apiFetch('/todos/completed', { method: 'DELETE' });
+      load();
+    });
+
+    // ── Modal ──────────────────────────────────────────────────
+    function openModal(id = null) {
+      editingId = id;
+      document.getElementById('modal-title').textContent = id ? 'Edit todo' : 'Add todo';
+      document.getElementById('todo-form').reset();
+      document.getElementById('form-error').classList.add('hidden');
+      CabinOS.resetMdEditor(document.getElementById('t-desc'));
+      if (id) {
+        const t = allTodos.find(x => x.id === id);
+        if (t) {
+          document.getElementById('t-title').value    = t.title       || '';
+          document.getElementById('t-category').value = t.category    || '';
+          document.getElementById('t-desc').value     = t.description || '';
+        }
+      }
+      document.getElementById('modal').classList.remove('hidden');
+    }
+
+    function closeModal() {
+      document.getElementById('modal').classList.add('hidden');
+      editingId = null;
+    }
+
+    document.getElementById('add-btn').addEventListener('click', () => openModal());
+    document.getElementById('cancel-btn').addEventListener('click', closeModal);
+    document.getElementById('modal').addEventListener('click', e => {
+      if (e.target === document.getElementById('modal')) closeModal();
+    });
+
+    document.getElementById('todo-form').addEventListener('submit', async e => {
+      e.preventDefault();
+      const errEl = document.getElementById('form-error');
+      errEl.classList.add('hidden');
+      const payload = {
+        title:       document.getElementById('t-title').value.trim(),
+        category:    document.getElementById('t-category').value.trim() || 'General',
+        description: document.getElementById('t-desc').value.trim(),
+      };
+      const res = editingId
+        ? await CabinOS.apiFetch(`/todos/${editingId}`, {
+            method: 'PUT',
+            body: JSON.stringify({ ...allTodos.find(t => t.id === editingId), ...payload }),
+          })
+        : await CabinOS.apiFetch('/todos', {
+            method: 'POST',
+            body: JSON.stringify({ id: CabinOS.ulid(), ...payload }),
+          });
+      if (res.ok) { closeModal(); load(); }
+      else {
+        const body = await res.json().catch(() => ({}));
+        errEl.textContent = body.error || 'Save failed.';
+        errEl.classList.remove('hidden');
+      }
+    });
+
+    load();
+  </script>
+</body>
+</html>

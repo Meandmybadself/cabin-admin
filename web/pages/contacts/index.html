@@ -33,6 +33,7 @@
       <a href="/pages/contacts/">Contacts</a>
       <a href="/pages/businesses/">Businesses</a>
       <a href="/pages/appliances/">Appliances</a>
+      <a href="/pages/todos/">Todos</a>
       <a href="/pages/settings/">Settings</a>
     </div>
   </nav>
@@ -66,7 +67,7 @@
         </div>
         <div class="form-row">
           <label>Notes</label>
-          <textarea id="c-notes" style="min-height:70px"></textarea>
+          <textarea id="c-notes" style="min-height:70px" data-md></textarea>
         </div>
         <p id="form-error" class="error hidden"></p>
         <div class="modal-actions">
@@ -96,7 +97,7 @@
           <div class="contact-info">
             <div class="contact-name">${esc(c.name)}</div>
             ${c.role ? `<div class="contact-role">${esc(c.role)}</div>` : ''}
-            ${c.notes ? `<div class="muted" style="font-size:.85rem">${esc(c.notes)}</div>` : ''}
+            ${c.notes ? `<div class="notes-md muted" style="font-size:.85rem">${CabinOS.renderMarkdown(c.notes)}</div>` : ''}
           </div>
           ${c.phone ? `<a class="contact-phone" href="tel:${esc(c.phone)}">${esc(c.phone)}</a>` : ''}
           <div class="contact-actions">

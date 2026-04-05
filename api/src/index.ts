@@ -7,6 +7,7 @@ import { handleVideos } from './routes/videos';
 import { handleBusinesses } from './routes/businesses';
 import { handleAppliances } from './routes/appliances';
 import { handleChecklists } from './routes/checklists';
+import { handleTodos } from './routes/todos';
 import { validateBasicAuth } from './middleware/auth';
 
 export interface Env {
@@ -62,6 +63,8 @@ export default {
           response = await handleBusinesses(request, env, path);
         } else if (path.startsWith('/api/appliances')) {
           response = await handleAppliances(request, env, path);
+        } else if (path.startsWith('/api/todos')) {
+          response = await handleTodos(request, env, path);
         } else {
           response = json({ error: 'Not found' }, 404);
         }
