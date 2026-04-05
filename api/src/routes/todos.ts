@@ -1,6 +1,7 @@
 import { Env, json } from '../index';
 import { requireAuth } from '../middleware/auth';
 import { dbAll, dbFirst, dbRun } from '../lib/db';
+import { presignUpload, presignRead } from '../lib/r2';
 
 interface Todo {
   id: string;
@@ -11,13 +12,37 @@ interface Todo {
   created_at: number;
 }
 
+interface TodoMedia {
+  id: string;
+  todo_id: string;
+  r2_key: string;
+  media_type: string;
+  filename: string;
+  created_at: number;
+}
+
 export async function handleTodos(request: Request, env: Env, path: string): Promise<Response> {
   const method = request.method;
 
   // GET /api/todos
   if (path === '/api/todos' && method === 'GET') {
     const todos = await dbAll<Todo>(env.DB, 'SELECT * FROM todos ORDER BY created_at DESC');
-    return json(todos);
+    const allMedia = await dbAll<TodoMedia>(env.DB, 'SELECT * FROM todo_media ORDER BY created_at ASC');
+
+    const mediaByTodo: Record<string, TodoMedia[]> = {};
+    for (const m of allMedia) {
+      (mediaByTodo[m.todo_id] = mediaByTodo[m.todo_id] || []).push(m);
+    }
+
+    const result = await Promise.all(todos.map(async t => ({
+      ...t,
+      media: await Promise.all((mediaByTodo[t.id] || []).map(async m => ({
+        ...m,
+        url: await presignRead(env.PHOTOS, m.r2_key),
+      }))),
+    })));
+
+    return json(result);
   }
 
   // POST /api/todos
@@ -31,13 +56,16 @@ export async function handleTodos(request: Request, env: Env, path: string): Pro
       [body.id, body.title, body.description ?? '', body.category ?? 'General']
     );
     const created = await dbFirst<Todo>(env.DB, 'SELECT * FROM todos WHERE id = ?', [body.id]);
-    return json(created, 201);
+    return json({ ...created!, media: [] }, 201);
   }
 
   // DELETE /api/todos/completed — bulk delete; must come before /:id
   if (path === '/api/todos/completed' && method === 'DELETE') {
     const authErr = await requireAuth(request, env);
     if (authErr) return authErr;
+    const mediaItems = await dbAll<TodoMedia>(env.DB,
+      'SELECT tm.r2_key FROM todo_media tm JOIN todos t ON t.id = tm.todo_id WHERE t.done = 1', []);
+    await Promise.all(mediaItems.map(m => env.PHOTOS.delete(m.r2_key)));
     await dbRun(env.DB, 'DELETE FROM todos WHERE done = 1', []);
     return new Response(null, { status: 204 });
   }
@@ -63,8 +91,52 @@ export async function handleTodos(request: Request, env: Env, path: string): Pro
     const authErr = await requireAuth(request, env);
     if (authErr) return authErr;
     const id = path.split('/')[3];
+    const mediaItems = await dbAll<TodoMedia>(env.DB, 'SELECT r2_key FROM todo_media WHERE todo_id = ?', [id]);
+    await Promise.all(mediaItems.map(m => env.PHOTOS.delete(m.r2_key)));
     const result = await dbRun(env.DB, 'DELETE FROM todos WHERE id = ?', [id]);
     if (result.meta.changes === 0) return json({ error: 'Not found' }, 404);
+    return new Response(null, { status: 204 });
+  }
+
+  // POST /api/todos/:id/media/presign
+  if (path.match(/^\/api\/todos\/[^/]+\/media\/presign$/) && method === 'POST') {
+    const authErr = await requireAuth(request, env);
+    if (authErr) return authErr;
+    const todoId = path.split('/')[3];
+    const todo = await dbFirst<Todo>(env.DB, 'SELECT id FROM todos WHERE id = ?', [todoId]);
+    if (!todo) return json({ error: 'Not found' }, 404);
+    const body = await request.json<{ id?: string; content_type?: string }>();
+    if (!body.id || !body.content_type) return json({ error: 'id and content_type required' }, 400);
+    const r2_key = `todos/${todoId}/${body.id}`;
+    const upload_url = await presignUpload(env.PHOTOS, r2_key, body.content_type);
+    return json({ upload_url, r2_key });
+  }
+
+  // POST /api/todos/:id/media/confirm
+  if (path.match(/^\/api\/todos\/[^/]+\/media\/confirm$/) && method === 'POST') {
+    const authErr = await requireAuth(request, env);
+    if (authErr) return authErr;
+    const todoId = path.split('/')[3];
+    const body = await request.json<{ id?: string; r2_key?: string; media_type?: string; filename?: string }>();
+    if (!body.id || !body.r2_key || !body.media_type) return json({ error: 'id, r2_key, media_type required' }, 400);
+    await dbRun(env.DB,
+      'INSERT INTO todo_media (id, todo_id, r2_key, media_type, filename) VALUES (?, ?, ?, ?, ?)',
+      [body.id, todoId, body.r2_key, body.media_type, body.filename ?? '']
+    );
+    const media = await dbFirst<TodoMedia>(env.DB, 'SELECT * FROM todo_media WHERE id = ?', [body.id]);
+    return json({ ...media!, url: await presignRead(env.PHOTOS, body.r2_key) }, 201);
+  }
+
+  // DELETE /api/todos/:id/media/:media_id
+  if (path.match(/^\/api\/todos\/[^/]+\/media\/[^/]+$/) && method === 'DELETE') {
+    const authErr = await requireAuth(request, env);
+    if (authErr) return authErr;
+    const parts = path.split('/');
+    const mediaId = parts[5];
+    const media = await dbFirst<TodoMedia>(env.DB, 'SELECT * FROM todo_media WHERE id = ?', [mediaId]);
+    if (!media) return json({ error: 'Not found' }, 404);
+    await env.PHOTOS.delete(media.r2_key);
+    await dbRun(env.DB, 'DELETE FROM todo_media WHERE id = ?', [mediaId]);
     return new Response(null, { status: 204 });
   }
 
