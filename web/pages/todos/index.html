@@ -156,6 +156,10 @@
           <label>Description</label>
           <textarea id="t-desc" style="min-height:80px" data-md></textarea>
         </div>
+        <div id="modal-media-section" class="form-row hidden">
+          <label>Attachments</label>
+          <div id="modal-media-grid"></div>
+        </div>
         <p id="form-error" class="error hidden"></p>
         <div class="modal-actions">
           <button type="submit" class="btn btn-primary">Save</button>
@@ -393,13 +397,46 @@
       document.getElementById('todo-form').reset();
       document.getElementById('form-error').classList.add('hidden');
       CabinOS.resetMdEditor(document.getElementById('t-desc'));
+      const mediaSection = document.getElementById('modal-media-section');
+      const mediaGrid = document.getElementById('modal-media-grid');
       if (id) {
         const t = allTodos.find(x => x.id === id);
         if (t) {
           document.getElementById('t-title').value    = t.title       || '';
           document.getElementById('t-category').value = t.category    || '';
           document.getElementById('t-desc').value     = t.description || '';
+          const media = t.media || [];
+          if (media.length) {
+            mediaGrid.innerHTML = `<div class="media-grid">${media.map(m => `
+              <div class="media-item">
+                ${m.media_type === 'image'
+                  ? `<img class="media-thumb-img" src="${esc(m.url)}" alt="${esc(m.filename)}" loading="lazy">`
+                  : `<video class="media-thumb-video" src="${esc(m.url)}" preload="metadata"></video>`
+                }
+                <button type="button" class="media-delete-btn" data-media-id="${esc(m.id)}" data-todo-id="${esc(t.id)}" title="Remove">×</button>
+              </div>`).join('')}</div>`;
+            mediaGrid.querySelectorAll('.media-delete-btn').forEach(btn =>
+              btn.addEventListener('click', async e => {
+                e.preventDefault();
+                const { mediaId, todoId } = btn.dataset;
+                await CabinOS.apiFetch(`/todos/${todoId}/media/${mediaId}`, { method: 'DELETE' });
+                await load();
+                const updated = allTodos.find(x => x.id === todoId);
+                const updatedMedia = (updated && updated.media) || [];
+                if (updatedMedia.length) {
+                  btn.closest('.media-item').remove();
+                } else {
+                  mediaSection.classList.add('hidden');
+                }
+              })
+            );
+            mediaSection.classList.remove('hidden');
+          } else {
+            mediaSection.classList.add('hidden');
+          }
         }
+      } else {
+        mediaSection.classList.add('hidden');
       }
       document.getElementById('modal').classList.remove('hidden');
     }
