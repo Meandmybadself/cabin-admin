@@ -156,9 +156,21 @@
           <label>Description</label>
           <textarea id="t-desc" style="min-height:80px" data-md></textarea>
         </div>
-        <div id="modal-media-section" class="form-row hidden">
+        <div id="modal-media-section" class="form-row">
           <label>Attachments</label>
           <div id="modal-media-grid"></div>
+          <div class="media-upload-row">
+            <label class="media-upload-label" id="modal-img-label" title="Add image">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+              Add image
+              <input type="file" accept="image/*" id="modal-img-input" style="display:none">
+            </label>
+            <label class="media-upload-label" id="modal-vid-label" title="Add video">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+              Add video
+              <input type="file" accept="video/*" id="modal-vid-input" style="display:none">
+            </label>
+          </div>
         </div>
         <p id="form-error" class="error hidden"></p>
         <div class="modal-actions">
@@ -180,6 +192,7 @@
     let allTodos     = [];
     let activeFilter = 'all';
     let editingId    = null;
+    let stagedFiles  = [];
     const openIds    = new Set();
 
     // ── Filter pills ───────────────────────────────────────────
@@ -331,6 +344,21 @@
     }
 
     // ── Media upload ───────────────────────────────────────────
+    async function uploadFileToTodo(todoId, file, mediaType) {
+      const mediaId     = CabinOS.ulid();
+      const contentType = file.type || (mediaType === 'image' ? 'image/jpeg' : 'video/mp4');
+      const presignRes  = await CabinOS.apiFetch(`/todos/${todoId}/media/presign`, {
+        method: 'POST',
+        body: JSON.stringify({ id: mediaId, content_type: contentType }),
+      });
+      const { upload_url, r2_key } = await presignRes.json();
+      await fetch(upload_url, { method: 'PUT', headers: { 'Content-Type': contentType }, body: file });
+      await CabinOS.apiFetch(`/todos/${todoId}/media/confirm`, {
+        method: 'POST',
+        body: JSON.stringify({ id: mediaId, r2_key, media_type: mediaType, filename: file.name }),
+      });
+    }
+
     async function handleMediaUpload(input) {
       const file = input.files[0];
       if (!file) return;
@@ -338,26 +366,8 @@
       const mediaType = input.dataset.mediaType;
       const label     = input.closest('.media-upload-label');
       if (label) label.classList.add('uploading');
-
       try {
-        const mediaId = CabinOS.ulid();
-        const presignRes = await CabinOS.apiFetch(`/todos/${todoId}/media/presign`, {
-          method: 'POST',
-          body: JSON.stringify({ id: mediaId, content_type: file.type || (mediaType === 'image' ? 'image/jpeg' : 'video/mp4') }),
-        });
-        const { upload_url, r2_key } = await presignRes.json();
-
-        await fetch(upload_url, {
-          method: 'PUT',
-          headers: { 'Content-Type': file.type || (mediaType === 'image' ? 'image/jpeg' : 'video/mp4') },
-          body: file,
-        });
-
-        await CabinOS.apiFetch(`/todos/${todoId}/media/confirm`, {
-          method: 'POST',
-          body: JSON.stringify({ id: mediaId, r2_key, media_type: mediaType, filename: file.name }),
-        });
-
+        await uploadFileToTodo(todoId, file, mediaType);
         openIds.add(todoId);
         load();
       } catch (err) {
@@ -368,6 +378,50 @@
         if (label) label.classList.remove('uploading');
       }
     }
+
+    // ── Stage files in the modal (before todo exists) ─────────
+    function stageModalFile(file, mediaType) {
+      const idx       = stagedFiles.length;
+      const objectUrl = URL.createObjectURL(file);
+      stagedFiles.push({ file, mediaType, objectUrl });
+
+      const grid = document.getElementById('modal-media-grid').querySelector('.media-grid')
+                || (() => {
+                     const g = document.createElement('div');
+                     g.className = 'media-grid';
+                     document.getElementById('modal-media-grid').prepend(g);
+                     return g;
+                   })();
+
+      const item = document.createElement('div');
+      item.className = 'media-item';
+      item.innerHTML = mediaType === 'image'
+        ? `<img class="media-thumb-img" src="${objectUrl}">`
+        : `<video class="media-thumb-video" src="${objectUrl}" preload="metadata"></video>`;
+      const removeBtn = document.createElement('button');
+      removeBtn.type      = 'button';
+      removeBtn.className = 'media-delete-btn';
+      removeBtn.title     = 'Remove';
+      removeBtn.textContent = '×';
+      removeBtn.addEventListener('click', () => {
+        stagedFiles[idx] = null;
+        URL.revokeObjectURL(objectUrl);
+        item.remove();
+      });
+      item.appendChild(removeBtn);
+      grid.appendChild(item);
+    }
+
+    document.getElementById('modal-img-input').addEventListener('change', e => {
+      const file = e.target.files[0];
+      if (file) stageModalFile(file, 'image');
+      e.target.value = '';
+    });
+    document.getElementById('modal-vid-input').addEventListener('change', e => {
+      const file = e.target.files[0];
+      if (file) stageModalFile(file, 'video');
+      e.target.value = '';
+    });
 
     // ── Load ───────────────────────────────────────────────────
     async function load() {
@@ -393,12 +447,13 @@
     // ── Modal ──────────────────────────────────────────────────
     function openModal(id = null) {
       editingId = id;
+      stagedFiles = [];
       document.getElementById('modal-title').textContent = id ? 'Edit todo' : 'Add todo';
       document.getElementById('todo-form').reset();
       document.getElementById('form-error').classList.add('hidden');
       CabinOS.resetMdEditor(document.getElementById('t-desc'));
-      const mediaSection = document.getElementById('modal-media-section');
       const mediaGrid = document.getElementById('modal-media-grid');
+      mediaGrid.innerHTML = '';
       if (id) {
         const t = allTodos.find(x => x.id === id);
         if (t) {
@@ -407,36 +462,28 @@
           document.getElementById('t-desc').value     = t.description || '';
           const media = t.media || [];
           if (media.length) {
-            mediaGrid.innerHTML = `<div class="media-grid">${media.map(m => `
+            const grid = document.createElement('div');
+            grid.className = 'media-grid';
+            grid.innerHTML = media.map(m => `
               <div class="media-item">
                 ${m.media_type === 'image'
                   ? `<img class="media-thumb-img" src="${esc(m.url)}" alt="${esc(m.filename)}" loading="lazy">`
                   : `<video class="media-thumb-video" src="${esc(m.url)}" preload="metadata"></video>`
                 }
                 <button type="button" class="media-delete-btn" data-media-id="${esc(m.id)}" data-todo-id="${esc(t.id)}" title="Remove">×</button>
-              </div>`).join('')}</div>`;
-            mediaGrid.querySelectorAll('.media-delete-btn').forEach(btn =>
+              </div>`).join('');
+            grid.querySelectorAll('.media-delete-btn').forEach(btn =>
               btn.addEventListener('click', async e => {
                 e.preventDefault();
                 const { mediaId, todoId } = btn.dataset;
                 await CabinOS.apiFetch(`/todos/${todoId}/media/${mediaId}`, { method: 'DELETE' });
+                btn.closest('.media-item').remove();
                 await load();
-                const updated = allTodos.find(x => x.id === todoId);
-                const updatedMedia = (updated && updated.media) || [];
-                if (updatedMedia.length) {
-                  btn.closest('.media-item').remove();
-                } else {
-                  mediaSection.classList.add('hidden');
-                }
               })
             );
-            mediaSection.classList.remove('hidden');
-          } else {
-            mediaSection.classList.add('hidden');
+            mediaGrid.appendChild(grid);
           }
         }
-      } else {
-        mediaSection.classList.add('hidden');
       }
       document.getElementById('modal').classList.remove('hidden');
     }
@@ -444,6 +491,8 @@
     function closeModal() {
       document.getElementById('modal').classList.add('hidden');
       editingId = null;
+      stagedFiles.forEach(f => f && URL.revokeObjectURL(f.objectUrl));
+      stagedFiles = [];
     }
 
     document.getElementById('add-btn').addEventListener('click', () => openModal());
@@ -461,21 +510,40 @@
         category:    document.getElementById('t-category').value.trim() || 'General',
         description: document.getElementById('t-desc').value.trim(),
       };
-      const res = editingId
-        ? await CabinOS.apiFetch(`/todos/${editingId}`, {
-            method: 'PUT',
-            body: JSON.stringify({ ...allTodos.find(t => t.id === editingId), ...payload }),
-          })
-        : await CabinOS.apiFetch('/todos', {
-            method: 'POST',
-            body: JSON.stringify({ id: CabinOS.ulid(), ...payload }),
-          });
-      if (res.ok) { closeModal(); load(); }
-      else {
+      let todoId;
+      let res;
+      if (editingId) {
+        todoId = editingId;
+        res = await CabinOS.apiFetch(`/todos/${editingId}`, {
+          method: 'PUT',
+          body: JSON.stringify({ ...allTodos.find(t => t.id === editingId), ...payload }),
+        });
+      } else {
+        todoId = CabinOS.ulid();
+        res = await CabinOS.apiFetch('/todos', {
+          method: 'POST',
+          body: JSON.stringify({ id: todoId, ...payload }),
+        });
+      }
+      if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         errEl.textContent = body.error || 'Save failed.';
         errEl.classList.remove('hidden');
+        return;
       }
+      const pending = stagedFiles.filter(Boolean);
+      if (pending.length) {
+        try {
+          for (const { file, mediaType } of pending) {
+            await uploadFileToTodo(todoId, file, mediaType);
+          }
+        } catch (err) {
+          console.error(err);
+          alert('Todo saved but one or more uploads failed.');
+        }
+      }
+      closeModal();
+      load();
     });
 
     load();
