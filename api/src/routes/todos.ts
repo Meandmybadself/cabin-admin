@@ -106,7 +106,7 @@ export async function handleTodos(request: Request, env: Env, path: string): Pro
     if (!todo) return json({ error: 'Not found' }, 404);
     const mediaId   = request.headers.get('X-Media-Id') || crypto.randomUUID();
     const contentType = request.headers.get('Content-Type') || 'application/octet-stream';
-    const filename  = request.headers.get('X-Filename') || '';
+    const filename  = decodeURIComponent(request.headers.get('X-Filename') || '');
     const mediaType = contentType.startsWith('image/') ? 'image' : 'video';
     const r2_key    = `todos/${todoId}/${mediaId}`;
     await env.PHOTOS.put(r2_key, request.body, { httpMetadata: { contentType } });

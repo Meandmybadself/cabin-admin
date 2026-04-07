@@ -348,7 +348,7 @@
       const contentType = file.type || (mediaType === 'image' ? 'image/jpeg' : 'video/mp4');
       const res = await CabinOS.apiFetch(`/todos/${todoId}/media`, {
         method: 'POST',
-        headers: { 'Content-Type': contentType, 'X-Filename': file.name },
+        headers: { 'Content-Type': contentType, 'X-Filename': encodeURIComponent(file.name) },
         body: file,
       });
       if (!res.ok) throw new Error(`Upload failed: ${res.status}`);
