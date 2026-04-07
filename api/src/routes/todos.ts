@@ -1,7 +1,6 @@
 import { Env, json } from '../index';
 import { requireAuth } from '../middleware/auth';
 import { dbAll, dbFirst, dbRun } from '../lib/db';
-import { presignUpload, presignRead } from '../lib/r2';
 
 interface Todo {
   id: string;
@@ -34,13 +33,13 @@ export async function handleTodos(request: Request, env: Env, path: string): Pro
       (mediaByTodo[m.todo_id] = mediaByTodo[m.todo_id] || []).push(m);
     }
 
-    const result = await Promise.all(todos.map(async t => ({
+    const result = todos.map(t => ({
       ...t,
-      media: await Promise.all((mediaByTodo[t.id] || []).map(async m => ({
+      media: (mediaByTodo[t.id] || []).map(m => ({
         ...m,
-        url: await presignRead(env.PHOTOS, m.r2_key),
-      }))),
-    })));
+        url: `/api/todos/${t.id}/media/${m.id}/file`,
+      })),
+    }));
 
     return json(result);
   }
@@ -98,33 +97,44 @@ export async function handleTodos(request: Request, env: Env, path: string): Pro
     return new Response(null, { status: 204 });
   }
 
-  // POST /api/todos/:id/media/presign
-  if (path.match(/^\/api\/todos\/[^/]+\/media\/presign$/) && method === 'POST') {
+  // POST /api/todos/:id/media  — upload file directly through Worker
+  if (path.match(/^\/api\/todos\/[^/]+\/media$/) && method === 'POST') {
     const authErr = await requireAuth(request, env);
     if (authErr) return authErr;
     const todoId = path.split('/')[3];
     const todo = await dbFirst<Todo>(env.DB, 'SELECT id FROM todos WHERE id = ?', [todoId]);
     if (!todo) return json({ error: 'Not found' }, 404);
-    const body = await request.json<{ id?: string; content_type?: string }>();
-    if (!body.id || !body.content_type) return json({ error: 'id and content_type required' }, 400);
-    const r2_key = `todos/${todoId}/${body.id}`;
-    const upload_url = await presignUpload(env.PHOTOS, r2_key, body.content_type);
-    return json({ upload_url, r2_key });
-  }
-
-  // POST /api/todos/:id/media/confirm
-  if (path.match(/^\/api\/todos\/[^/]+\/media\/confirm$/) && method === 'POST') {
-    const authErr = await requireAuth(request, env);
-    if (authErr) return authErr;
-    const todoId = path.split('/')[3];
-    const body = await request.json<{ id?: string; r2_key?: string; media_type?: string; filename?: string }>();
-    if (!body.id || !body.r2_key || !body.media_type) return json({ error: 'id, r2_key, media_type required' }, 400);
+    const mediaId   = request.headers.get('X-Media-Id') || crypto.randomUUID();
+    const contentType = request.headers.get('Content-Type') || 'application/octet-stream';
+    const filename  = request.headers.get('X-Filename') || '';
+    const mediaType = contentType.startsWith('image/') ? 'image' : 'video';
+    const r2_key    = `todos/${todoId}/${mediaId}`;
+    await env.PHOTOS.put(r2_key, request.body, { httpMetadata: { contentType } });
     await dbRun(env.DB,
       'INSERT INTO todo_media (id, todo_id, r2_key, media_type, filename) VALUES (?, ?, ?, ?, ?)',
-      [body.id, todoId, body.r2_key, body.media_type, body.filename ?? '']
+      [mediaId, todoId, r2_key, mediaType, filename]
     );
-    const media = await dbFirst<TodoMedia>(env.DB, 'SELECT * FROM todo_media WHERE id = ?', [body.id]);
-    return json({ ...media!, url: await presignRead(env.PHOTOS, body.r2_key) }, 201);
+    const media = await dbFirst<TodoMedia>(env.DB, 'SELECT * FROM todo_media WHERE id = ?', [mediaId]);
+    return json({ ...media!, url: `/api/todos/${todoId}/media/${mediaId}/file` }, 201);
+  }
+
+  // GET /api/todos/:id/media/:mediaId/file  — serve file from R2
+  if (path.match(/^\/api\/todos\/[^/]+\/media\/[^/]+\/file$/) && method === 'GET') {
+    const authErr = await requireAuth(request, env);
+    if (authErr) return authErr;
+    const parts   = path.split('/');
+    const todoId  = parts[3];
+    const mediaId = parts[5];
+    const media   = await dbFirst<TodoMedia>(env.DB, 'SELECT * FROM todo_media WHERE id = ? AND todo_id = ?', [mediaId, todoId]);
+    if (!media) return json({ error: 'Not found' }, 404);
+    const object  = await env.PHOTOS.get(media.r2_key);
+    if (!object) return json({ error: 'Not found' }, 404);
+    return new Response(object.body, {
+      headers: {
+        'Content-Type': object.httpMetadata?.contentType || 'application/octet-stream',
+        'Cache-Control': 'private, max-age=86400',
+      },
+    });
   }
 
   // DELETE /api/todos/:id/media/:media_id
