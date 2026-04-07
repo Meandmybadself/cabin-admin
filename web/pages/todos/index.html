@@ -351,8 +351,11 @@
         method: 'POST',
         body: JSON.stringify({ id: mediaId, content_type: contentType }),
       });
+      if (!presignRes.ok) throw new Error(`Presign failed: ${presignRes.status}`);
       const { upload_url, r2_key } = await presignRes.json();
-      await fetch(upload_url, { method: 'PUT', headers: { 'Content-Type': contentType }, body: file });
+      if (!upload_url) throw new Error('No upload URL returned from presign');
+      const putRes = await fetch(upload_url, { method: 'PUT', headers: { 'Content-Type': contentType }, body: file });
+      if (!putRes.ok) throw new Error(`Upload to R2 failed: ${putRes.status}`);
       await CabinOS.apiFetch(`/todos/${todoId}/media/confirm`, {
         method: 'POST',
         body: JSON.stringify({ id: mediaId, r2_key, media_type: mediaType, filename: file.name }),
@@ -537,9 +540,13 @@
           for (const { file, mediaType } of pending) {
             await uploadFileToTodo(todoId, file, mediaType);
           }
+          openIds.add(todoId);
         } catch (err) {
           console.error(err);
-          alert('Todo saved but one or more uploads failed.');
+          errEl.textContent = `Todo saved but upload failed: ${err.message}`;
+          errEl.classList.remove('hidden');
+          load();
+          return;
         }
       }
       closeModal();
