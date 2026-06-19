@@ -1,7 +1,7 @@
 import { Env, json } from '../index';
 import { requireAuth } from '../middleware/auth';
 import { dbAll, dbFirst, dbRun } from '../lib/db';
-import { r2KeyForPhoto, presignUpload, presignRead } from '../lib/r2';
+import { r2KeyForPhoto } from '../lib/r2';
 
 interface PhotoRow {
   id: string;
@@ -44,52 +44,33 @@ export async function handlePhotos(request: Request, env: Env, path: string): Pr
       params
     );
 
-    const withUrls = await Promise.all(
-      rows.map(async (row) => ({
-        ...row,
-        url: await presignRead(env.PHOTOS, row.r2_key),
-      }))
-    );
+    const withUrls = rows.map((row) => ({
+      ...row,
+      url: `/api/photos/${row.id}/file`,
+    }));
     return json(withUrls);
   }
 
-  // POST /api/photos/presign
-  if (path === '/api/photos/presign' && method === 'POST') {
+  // POST /api/photos/upload  — upload photo directly through Worker (streamed into R2)
+  if (path === '/api/photos/upload' && method === 'POST') {
     const authErr = await requireAuth(request, env);
     if (authErr) return authErr;
-    const body = await request.json<{
-      id?: string;
-      category_id?: string;
-      session_id?: string | null;
-      taken_at?: number;
-      content_type?: string;
-    }>();
-    if (!body.id || !body.category_id || !body.taken_at || !body.content_type) {
-      return json({ error: 'id, category_id, taken_at, content_type required' }, 400);
+    const id = request.headers.get('X-Photo-Id') || crypto.randomUUID();
+    const categoryId = request.headers.get('X-Category-Id') || '';
+    const sessionIdHeader = request.headers.get('X-Session-Id');
+    const sessionId = sessionIdHeader && sessionIdHeader !== 'null' ? sessionIdHeader : null;
+    const takenAt = Number(request.headers.get('X-Taken-At'));
+    const contentType = request.headers.get('Content-Type') || 'application/octet-stream';
+    const notesHeader = request.headers.get('X-Notes');
+    const notes = notesHeader ? decodeURIComponent(notesHeader) : null;
+    if (!categoryId || !takenAt) {
+      return json({ error: 'X-Category-Id and X-Taken-At required' }, 400);
     }
-    const r2_key = r2KeyForPhoto(body.taken_at, body.category_id, body.id);
-    const upload_url = await presignUpload(env.PHOTOS, r2_key, body.content_type);
-    return json({ upload_url, r2_key });
-  }
-
-  // POST /api/photos/confirm
-  if (path === '/api/photos/confirm' && method === 'POST') {
-    const authErr = await requireAuth(request, env);
-    if (authErr) return authErr;
-    const body = await request.json<{
-      id?: string;
-      category_id?: string;
-      session_id?: string | null;
-      r2_key?: string;
-      taken_at?: number;
-      notes?: string | null;
-    }>();
-    if (!body.id || !body.category_id || !body.r2_key || !body.taken_at) {
-      return json({ error: 'id, category_id, r2_key, taken_at required' }, 400);
-    }
+    const r2_key = r2KeyForPhoto(takenAt, categoryId, id);
+    await env.PHOTOS.put(r2_key, request.body, { httpMetadata: { contentType } });
     await dbRun(env.DB,
       'INSERT INTO photos (id, category_id, session_id, r2_key, taken_at, notes) VALUES (?, ?, ?, ?, ?, ?)',
-      [body.id, body.category_id, body.session_id ?? null, body.r2_key, body.taken_at, body.notes ?? null]
+      [id, categoryId, sessionId, r2_key, takenAt, notes]
     );
     const row = await dbFirst<PhotoRow>(
       env.DB,
@@ -98,10 +79,26 @@ export async function handlePhotos(request: Request, env: Env, path: string): Pr
        FROM photos p
        JOIN photo_categories pc ON pc.id = p.category_id
        WHERE p.id = ?`,
-      [body.id]
+      [id]
     );
-    const url = await presignRead(env.PHOTOS, row!.r2_key);
-    return json({ ...row, url }, 201);
+    return json({ ...row, url: `/api/photos/${id}/file` }, 201);
+  }
+
+  // GET /api/photos/:id/file  — serve photo from R2
+  if (path.match(/^\/api\/photos\/[^/]+\/file$/) && method === 'GET') {
+    const authErr = await requireAuth(request, env);
+    if (authErr) return authErr;
+    const id = path.split('/')[3];
+    const row = await dbFirst<{ r2_key: string }>(env.DB, 'SELECT r2_key FROM photos WHERE id = ?', [id]);
+    if (!row) return json({ error: 'Not found' }, 404);
+    const object = await env.PHOTOS.get(row.r2_key);
+    if (!object) return json({ error: 'Not found' }, 404);
+    return new Response(object.body, {
+      headers: {
+        'Content-Type': object.httpMetadata?.contentType || 'application/octet-stream',
+        'Cache-Control': 'private, max-age=86400',
+      },
+    });
   }
 
   // DELETE /api/photos/:id

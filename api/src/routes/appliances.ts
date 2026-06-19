@@ -1,7 +1,6 @@
 import { Env, json } from '../index';
 import { requireAuth } from '../middleware/auth';
 import { dbAll, dbFirst, dbRun } from '../lib/db';
-import { presignUpload, presignRead } from '../lib/r2';
 
 interface Appliance {
   id: string;
@@ -32,8 +31,10 @@ function r2KeyForManual(applianceId: string, manualId: string): string {
   return `manuals/${applianceId}/${manualId}.pdf`;
 }
 
-async function resolveManualUrl(bucket: R2Bucket, manual: ApplianceManual): Promise<string> {
-  if (manual.r2_key) return presignRead(bucket, manual.r2_key);
+function resolveManualUrl(manual: ApplianceManual): string {
+  // R2-backed manuals are served through the Worker proxy (stable, no expiry);
+  // external links use their stored URL directly.
+  if (manual.r2_key) return `/api/appliances/${manual.appliance_id}/manuals/${manual.id}/file`;
   return manual.url ?? '';
 }
 
@@ -56,14 +57,14 @@ export async function handleAppliances(request: Request, env: Env, path: string)
       (manualsByAppliance[m.appliance_id] = manualsByAppliance[m.appliance_id] || []).push(m);
     }
 
-    const result = await Promise.all(appliances.map(async a => ({
+    const result = appliances.map(a => ({
       ...a,
       events: eventsByAppliance[a.id] || [],
-      manuals: await Promise.all((manualsByAppliance[a.id] || []).map(async m => ({
+      manuals: (manualsByAppliance[a.id] || []).map(m => ({
         ...m,
-        url: await resolveManualUrl(env.PHOTOS, m),
-      }))),
-    })));
+        url: resolveManualUrl(m),
+      })),
+    }));
 
     return json(result);
   }
@@ -75,10 +76,10 @@ export async function handleAppliances(request: Request, env: Env, path: string)
     if (!appliance) return json({ error: 'Not found' }, 404);
     const events = await dbAll<ApplianceEvent>(env.DB, 'SELECT * FROM appliance_events WHERE appliance_id = ? ORDER BY date DESC, created_at DESC', [id]);
     const manuals = await dbAll<ApplianceManual>(env.DB, 'SELECT * FROM appliance_manuals WHERE appliance_id = ? ORDER BY created_at ASC', [id]);
-    const resolvedManuals = await Promise.all(manuals.map(async m => ({
+    const resolvedManuals = manuals.map(m => ({
       ...m,
-      url: await resolveManualUrl(env.PHOTOS, m),
-    })));
+      url: resolveManualUrl(m),
+    }));
     return json({ ...appliance, events, manuals: resolvedManuals });
   }
 
@@ -111,10 +112,10 @@ export async function handleAppliances(request: Request, env: Env, path: string)
     const updated = await dbFirst<Appliance>(env.DB, 'SELECT * FROM appliances WHERE id = ?', [id]);
     const events = await dbAll<ApplianceEvent>(env.DB, 'SELECT * FROM appliance_events WHERE appliance_id = ? ORDER BY date DESC, created_at DESC', [id]);
     const manuals = await dbAll<ApplianceManual>(env.DB, 'SELECT * FROM appliance_manuals WHERE appliance_id = ? ORDER BY created_at ASC', [id]);
-    const resolvedManuals = await Promise.all(manuals.map(async m => ({
+    const resolvedManuals = manuals.map(m => ({
       ...m,
-      url: await resolveManualUrl(env.PHOTOS, m),
-    })));
+      url: resolveManualUrl(m),
+    }));
     return json({ ...updated!, events, manuals: resolvedManuals });
   }
 
@@ -159,33 +160,43 @@ export async function handleAppliances(request: Request, env: Env, path: string)
     return new Response(null, { status: 204 });
   }
 
-  // POST /api/appliances/:id/manuals/presign  (PDF upload)
-  if (path.match(/^\/api\/appliances\/[^/]+\/manuals\/presign$/) && method === 'POST') {
+  // POST /api/appliances/:id/manuals/upload  — upload PDF directly through Worker
+  if (path.match(/^\/api\/appliances\/[^/]+\/manuals\/upload$/) && method === 'POST') {
     const authErr = await requireAuth(request, env);
     if (authErr) return authErr;
     const applianceId = path.split('/')[3];
     const appliance = await dbFirst<Appliance>(env.DB, 'SELECT id FROM appliances WHERE id = ?', [applianceId]);
     if (!appliance) return json({ error: 'Not found' }, 404);
-    const body = await request.json<{ id?: string; name?: string }>();
-    if (!body.id || !body.name) return json({ error: 'id and name required' }, 400);
-    const r2_key = r2KeyForManual(applianceId, body.id);
-    const upload_url = await presignUpload(env.PHOTOS, r2_key, 'application/pdf');
-    return json({ upload_url, r2_key });
-  }
-
-  // POST /api/appliances/:id/manuals/confirm  (confirm after PDF upload)
-  if (path.match(/^\/api\/appliances\/[^/]+\/manuals\/confirm$/) && method === 'POST') {
-    const authErr = await requireAuth(request, env);
-    if (authErr) return authErr;
-    const applianceId = path.split('/')[3];
-    const body = await request.json<{ id?: string; name?: string; r2_key?: string }>();
-    if (!body.id || !body.name || !body.r2_key) return json({ error: 'id, name, r2_key required' }, 400);
+    const manualId = request.headers.get('X-Manual-Id') || crypto.randomUUID();
+    const name = decodeURIComponent(request.headers.get('X-Manual-Name') || '');
+    if (!name) return json({ error: 'X-Manual-Name required' }, 400);
+    const r2_key = r2KeyForManual(applianceId, manualId);
+    await env.PHOTOS.put(r2_key, request.body, { httpMetadata: { contentType: 'application/pdf' } });
     await dbRun(env.DB,
       'INSERT INTO appliance_manuals (id, appliance_id, name, url, r2_key) VALUES (?, ?, ?, NULL, ?)',
-      [body.id, applianceId, body.name, body.r2_key]
+      [manualId, applianceId, name, r2_key]
     );
-    const manual = await dbFirst<ApplianceManual>(env.DB, 'SELECT * FROM appliance_manuals WHERE id = ?', [body.id]);
-    return json({ ...manual!, url: await presignRead(env.PHOTOS, body.r2_key) }, 201);
+    const manual = await dbFirst<ApplianceManual>(env.DB, 'SELECT * FROM appliance_manuals WHERE id = ?', [manualId]);
+    return json({ ...manual!, url: resolveManualUrl(manual!) }, 201);
+  }
+
+  // GET /api/appliances/:id/manuals/:manualId/file  — serve PDF from R2
+  if (path.match(/^\/api\/appliances\/[^/]+\/manuals\/[^/]+\/file$/) && method === 'GET') {
+    const authErr = await requireAuth(request, env);
+    if (authErr) return authErr;
+    const parts = path.split('/');
+    const applianceId = parts[3];
+    const manualId = parts[5];
+    const manual = await dbFirst<ApplianceManual>(env.DB, 'SELECT * FROM appliance_manuals WHERE id = ? AND appliance_id = ?', [manualId, applianceId]);
+    if (!manual || !manual.r2_key) return json({ error: 'Not found' }, 404);
+    const object = await env.PHOTOS.get(manual.r2_key);
+    if (!object) return json({ error: 'Not found' }, 404);
+    return new Response(object.body, {
+      headers: {
+        'Content-Type': object.httpMetadata?.contentType || 'application/pdf',
+        'Cache-Control': 'private, max-age=86400',
+      },
+    });
   }
 
   // POST /api/appliances/:id/manuals  (external link)

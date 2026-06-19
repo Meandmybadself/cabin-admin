@@ -308,25 +308,17 @@
           progress.style.display = 'inline';
 
           try {
-            // 1. Presign
-            const presignRes = await CabinOS.apiFetch(`/appliances/${appId}/manuals/presign`, {
+            // Upload the PDF directly through the Worker (streamed into R2).
+            const res = await CabinOS.apiFetch(`/appliances/${appId}/manuals/upload`, {
               method: 'POST',
-              body: JSON.stringify({ id: manualId, name }),
-            });
-            const { upload_url, r2_key } = await presignRes.json();
-
-            // 2. Upload directly to R2
-            await fetch(upload_url, {
-              method: 'PUT',
-              headers: { 'Content-Type': 'application/pdf' },
+              headers: {
+                'Content-Type': 'application/pdf',
+                'X-Manual-Id': manualId,
+                'X-Manual-Name': encodeURIComponent(name),
+              },
               body: file,
             });
-
-            // 3. Confirm
-            await CabinOS.apiFetch(`/appliances/${appId}/manuals/confirm`, {
-              method: 'POST',
-              body: JSON.stringify({ id: manualId, name, r2_key }),
-            });
+            if (!res.ok) throw new Error(`Upload failed: ${res.status}`);
 
             load();
           } catch (err) {
