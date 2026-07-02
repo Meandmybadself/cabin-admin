@@ -113,6 +113,27 @@ export async function handleBusinesses(request: Request, env: Env, path: string)
   return json({ error: 'Not found' }, 404);
 }
 
+// Public, read-only businesses endpoints. No auth — safe for benwaldencab.in.
+export async function handlePublicBusinesses(request: Request, env: Env, path: string): Promise<Response> {
+  if (request.method !== 'GET') return json({ error: 'Method not allowed' }, 405);
+
+  // GET /api/public/businesses
+  if (path === '/api/public/businesses') {
+    const rows = await dbAll<Business>(env.DB, 'SELECT * FROM businesses ORDER BY category, sort_order');
+    return json(rows.map(parse));
+  }
+
+  // GET /api/public/businesses/:id
+  if (path.match(/^\/api\/public\/businesses\/[^/]+$/)) {
+    const id = path.split('/')[4];
+    const row = await dbFirst<Business>(env.DB, 'SELECT * FROM businesses WHERE id = ?', [id]);
+    if (!row) return json({ error: 'Not found' }, 404);
+    return json(parse(row));
+  }
+
+  return json({ error: 'Not found' }, 404);
+}
+
 function parse(row: Business) {
   return {
     ...row,

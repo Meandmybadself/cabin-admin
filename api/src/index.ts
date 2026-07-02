@@ -4,7 +4,7 @@ import { handleChecklist } from './routes/checklist';
 import { handlePhotos } from './routes/photos';
 import { handlePhotoCategories } from './routes/photo-categories';
 import { handleVideos } from './routes/videos';
-import { handleBusinesses } from './routes/businesses';
+import { handleBusinesses, handlePublicBusinesses } from './routes/businesses';
 import { handleAppliances } from './routes/appliances';
 import { handleChecklists } from './routes/checklists';
 import { handleTodos } from './routes/todos';
@@ -16,15 +16,25 @@ export interface Env {
   PHOTOS: R2Bucket;
 }
 
-const CORS_HEADERS = {
-  'Access-Control-Allow-Origin': 'https://admin.benwaldencab.in',
-  'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
-  'Access-Control-Allow-Headers': 'Authorization, Content-Type',
-};
+const ALLOWED_ORIGINS = [
+  'https://admin.benwaldencab.in',
+  'https://benwaldencab.in',
+];
 
-function cors(res: Response): Response {
+function corsHeaders(request: Request): Record<string, string> {
+  const origin = request.headers.get('Origin') ?? '';
+  const allowOrigin = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
+  return {
+    'Access-Control-Allow-Origin': allowOrigin,
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
+    'Access-Control-Allow-Headers': 'Authorization, Content-Type',
+    'Vary': 'Origin',
+  };
+}
+
+function cors(res: Response, request: Request): Response {
   const headers = new Headers(res.headers);
-  for (const [k, v] of Object.entries(CORS_HEADERS)) headers.set(k, v);
+  for (const [k, v] of Object.entries(corsHeaders(request))) headers.set(k, v);
   return new Response(res.body, { status: res.status, headers });
 }
 
@@ -34,7 +44,24 @@ export default {
     const path = url.pathname;
 
     if (request.method === 'OPTIONS') {
-      return new Response(null, { status: 204, headers: CORS_HEADERS });
+      return new Response(null, { status: 204, headers: corsHeaders(request) });
+    }
+
+    // Public, unauthenticated read-only routes (available to benwaldencab.in).
+    // Dispatched BEFORE the auth gate — do not add mutating routes here.
+    if (path.startsWith('/api/public/')) {
+      let response: Response;
+      try {
+        if (path.startsWith('/api/public/businesses')) {
+          response = await handlePublicBusinesses(request, env, path);
+        } else {
+          response = json({ error: 'Not found' }, 404);
+        }
+      } catch (err) {
+        console.error(err);
+        response = json({ error: 'Internal server error' }, 500);
+      }
+      return cors(response, request);
     }
 
     // Global auth gate
@@ -72,7 +99,7 @@ export default {
         console.error(err);
         response = json({ error: 'Internal server error' }, 500);
       }
-      return cors(response);
+      return cors(response, request);
     }
 
     // Static frontend — proxy to GitHub Pages origin
