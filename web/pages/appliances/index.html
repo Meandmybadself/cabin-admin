@@ -7,12 +7,12 @@
   <title>Appliances — Cabin OS</title>
   <link rel="stylesheet" href="/assets/style.css">
   <style>
-    .app-table { width:100%; border-collapse:collapse; background:#fff; border-radius:var(--radius); box-shadow:var(--shadow); overflow:hidden; }
+    .app-table { width:100%; border-collapse:collapse; background:var(--card); border-radius:var(--radius); box-shadow:var(--shadow); overflow:hidden; }
     .app-table thead th { padding:.6rem .75rem; text-align:left; font-size:.78rem; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:.05em; border-bottom:2px solid var(--tan-dark); white-space:nowrap; }
     .app-table .app-row { cursor:pointer; border-top:1px solid var(--tan-dark); }
     .app-table .app-row:hover { background:var(--tan); }
     .app-table .app-row td { padding:.65rem .75rem; font-size:.9rem; vertical-align:middle; }
-    .app-table .detail-row td { padding:.75rem 1rem .75rem 2.25rem; border-top:none; background:#fafaf8; }
+    .app-table .detail-row td { padding:.75rem 1rem .75rem 2.25rem; border-top:none; background:var(--card-soft); }
     .app-table .detail-row { display:none; }
     .app-table .detail-row.open { display:table-row; }
     .app-name-cell { display:flex; align-items:center; gap:.5rem; font-weight:600; color:var(--green-dark); }
@@ -49,7 +49,7 @@
     .upload-progress { font-size:.82rem; color:var(--text-muted); margin-top:.35rem; display:none; }
 
     .modal-card {
-      background:#fff; border-radius:var(--radius);
+      background:var(--card); border-radius:var(--radius);
       box-shadow:0 8px 32px rgba(0,0,0,.2);
       width:100%; max-width:480px;
       padding:1.5rem;
